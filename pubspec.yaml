@@ -5,7 +5,7 @@ publish_to: 'none' # Remove this line if you wish to publish to pub.dev
 version: 3.0.0+dev.0
 
 environment:
-  sdk: ^3.5.4
+  sdk: ^3.9.2
 
 dependencies:
   animated_custom_dropdown: ^3.1.1
