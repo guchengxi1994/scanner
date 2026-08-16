@@ -38,7 +38,7 @@ pub fn scan(p: String) {
         .unwrap();
 
     rt.block_on(async {
-        let s = LocalScanner(p);
+        let s = LocalScanner { path: p };
         let r = s.scan().await;
         match r {
             Ok(_) => {}

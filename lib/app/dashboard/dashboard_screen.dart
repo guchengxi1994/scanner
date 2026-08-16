@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../duplicate_finder/notifier.dart';
+import '../history/scan_history.dart';
 import '../navigation.dart';
 import '../project_view/notifier.dart';
 import '../ui/app_ui.dart';
@@ -13,6 +14,14 @@ class DashboardScreen extends ConsumerWidget {
   Widget build(BuildContext context, WidgetRef ref) {
     final duplicate = ref.watch(scannerNotifierProvider);
     final largeScan = ref.watch(projectViewNotifierProvider);
+    final history = ref.watch(scanHistoryProvider);
+    final recentHistory = history.take(3).toList();
+    final activeTaskIds = <String>{
+      if (largeScan.isScanning && largeScan.historyId != null)
+        largeScan.historyId!,
+      if (duplicate.scanning && duplicate.historyId != null)
+        duplicate.historyId!,
+    };
     final duplicateBytes = duplicate.results.fold<BigInt>(
       BigInt.zero,
       (sum, result) => sum + result.fileSize * (result.count - BigInt.one),
@@ -127,25 +136,31 @@ class DashboardScreen extends ConsumerWidget {
                 padding: EdgeInsets.zero,
                 child: Column(
                   children: [
-                    _TaskLine(
-                      icon: Icons.folder_outlined,
-                      title: '大文件扫描',
-                      path: largeScan.path,
-                      result: largeScan.path.isEmpty
-                          ? '尚未运行'
-                          : '${largeScan.details.length} 个一级条目',
-                      isRunning: largeScan.isScanning,
-                    ),
-                    const Divider(height: 1, color: AppColors.line),
-                    _TaskLine(
-                      icon: Icons.copy_outlined,
-                      title: '重复文件扫描',
-                      path: duplicate.path,
-                      result: duplicate.path.isEmpty
-                          ? '尚未运行'
-                          : '${duplicate.results.length} 个重复组',
-                      isRunning: duplicate.scanning,
-                    ),
+                    if (recentHistory.isEmpty)
+                      const Padding(
+                        padding:
+                            EdgeInsets.symmetric(horizontal: 15, vertical: 18),
+                        child: Align(
+                          alignment: Alignment.centerLeft,
+                          child: Text(
+                            '尚未运行扫描任务',
+                            style:
+                                TextStyle(color: AppColors.muted, fontSize: 12),
+                          ),
+                        ),
+                      )
+                    else
+                      for (var index = 0;
+                          index < recentHistory.length;
+                          index++) ...[
+                        _TaskLine(
+                          item: recentHistory[index],
+                          isRunning:
+                              activeTaskIds.contains(recentHistory[index].id),
+                        ),
+                        if (index != recentHistory.length - 1)
+                          const Divider(height: 1, color: AppColors.line),
+                      ],
                   ],
                 ),
               ),
@@ -262,27 +277,26 @@ class _QuickAction extends StatelessWidget {
 }
 
 class _TaskLine extends StatelessWidget {
-  const _TaskLine({
-    required this.icon,
-    required this.title,
-    required this.path,
-    required this.result,
-    required this.isRunning,
-  });
+  const _TaskLine({required this.item, required this.isRunning});
 
-  final IconData icon;
-  final String title;
-  final String path;
-  final String result;
+  final ScanHistoryItem item;
   final bool isRunning;
 
   @override
   Widget build(BuildContext context) {
+    final isLargeScan = item.kind == ScanHistoryKind.largeFiles;
+    final title = isLargeScan ? '大文件扫描' : '重复文件扫描';
+    final result =
+        isLargeScan ? '${item.resultCount} 个一级条目' : '${item.resultCount} 个重复组';
     return Padding(
       padding: const EdgeInsets.symmetric(horizontal: 15, vertical: 11),
       child: Row(
         children: [
-          Icon(icon, color: AppColors.blue, size: 18),
+          Icon(
+            isLargeScan ? Icons.folder_outlined : Icons.copy_outlined,
+            color: isLargeScan ? AppColors.blue : AppColors.amber,
+            size: 18,
+          ),
           const SizedBox(width: 9),
           Expanded(
             child: Column(
@@ -291,9 +305,9 @@ class _TaskLine extends StatelessWidget {
                 Text(title,
                     style: const TextStyle(
                         fontSize: 12, fontWeight: FontWeight.w600)),
-                if (path.isNotEmpty)
+                if (item.path.isNotEmpty)
                   Text(
-                    path,
+                    item.path,
                     maxLines: 1,
                     overflow: TextOverflow.ellipsis,
                     style:
@@ -304,6 +318,8 @@ class _TaskLine extends StatelessWidget {
           ),
           if (isRunning)
             const StatusChip(label: '扫描中', color: AppColors.amber)
+          else if (!item.completed)
+            const StatusChip(label: '已中断', color: AppColors.muted)
           else
             Text(result,
                 style: const TextStyle(color: AppColors.green, fontSize: 11)),

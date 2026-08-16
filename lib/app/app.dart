@@ -1,11 +1,13 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:toastification/toastification.dart';
+import 'package:window_manager/window_manager.dart';
 
 import 'dashboard/dashboard_screen.dart';
 import 'document_search/document_search_screen.dart';
 import 'duplicate_finder/scanner_screen.dart';
 import 'navigation.dart';
+import 'package_info.dart';
 import 'project_view/project_view_screen.dart';
 import 'settings/settings_screen.dart';
 import 'tasks/tasks_screen.dart';
@@ -17,59 +19,70 @@ class MyApp extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return ProviderScope(
-      child: ToastificationWrapper(
-        child: MaterialApp(
-          debugShowCheckedModeBanner: false,
-          title: '存储扫描器',
-          theme: ThemeData(
-            useMaterial3: true,
-            fontFamily: 'Microsoft YaHei UI',
-            colorScheme: ColorScheme.fromSeed(
-              seedColor: AppColors.blue,
-              brightness: Brightness.light,
-              surface: AppColors.surface,
+      child: const _AppRoot(),
+    );
+  }
+}
+
+class _AppRoot extends ConsumerWidget {
+  const _AppRoot();
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final packageInfo =
+        ref.watch(appPackageInfoProvider).valueOrNull ?? fallbackPackageInfo;
+    return ToastificationWrapper(
+      child: MaterialApp(
+        debugShowCheckedModeBanner: false,
+        title: packageInfo.appName,
+        theme: ThemeData(
+          useMaterial3: true,
+          fontFamily: 'Microsoft YaHei UI',
+          colorScheme: ColorScheme.fromSeed(
+            seedColor: AppColors.blue,
+            brightness: Brightness.light,
+            surface: AppColors.surface,
+          ),
+          scaffoldBackgroundColor: AppColors.canvas,
+          dividerColor: AppColors.line,
+          inputDecorationTheme: InputDecorationTheme(
+            filled: true,
+            fillColor: AppColors.canvas,
+            contentPadding:
+                const EdgeInsets.symmetric(horizontal: 12, vertical: 12),
+            border: OutlineInputBorder(
+              borderRadius: BorderRadius.circular(6),
+              borderSide: const BorderSide(color: AppColors.line),
             ),
-            scaffoldBackgroundColor: AppColors.canvas,
-            dividerColor: AppColors.line,
-            inputDecorationTheme: InputDecorationTheme(
-              filled: true,
-              fillColor: AppColors.canvas,
-              contentPadding:
-                  const EdgeInsets.symmetric(horizontal: 12, vertical: 12),
-              border: OutlineInputBorder(
-                borderRadius: BorderRadius.circular(6),
-                borderSide: const BorderSide(color: AppColors.line),
-              ),
-              enabledBorder: OutlineInputBorder(
-                borderRadius: BorderRadius.circular(6),
-                borderSide: const BorderSide(color: AppColors.line),
-              ),
-              focusedBorder: OutlineInputBorder(
-                borderRadius: BorderRadius.circular(6),
-                borderSide: const BorderSide(color: AppColors.blue, width: 1.4),
-              ),
+            enabledBorder: OutlineInputBorder(
+              borderRadius: BorderRadius.circular(6),
+              borderSide: const BorderSide(color: AppColors.line),
             ),
-            filledButtonTheme: FilledButtonThemeData(
-              style: FilledButton.styleFrom(
-                backgroundColor: AppColors.blue,
-                foregroundColor: Colors.white,
-                minimumSize: const Size(0, 38),
-                shape: RoundedRectangleBorder(
-                    borderRadius: BorderRadius.circular(6)),
-                textStyle:
-                    const TextStyle(fontWeight: FontWeight.w700, fontSize: 13),
-              ),
-            ),
-            textButtonTheme: TextButtonThemeData(
-              style: TextButton.styleFrom(
-                foregroundColor: AppColors.blue,
-                shape: RoundedRectangleBorder(
-                    borderRadius: BorderRadius.circular(5)),
-              ),
+            focusedBorder: OutlineInputBorder(
+              borderRadius: BorderRadius.circular(6),
+              borderSide: const BorderSide(color: AppColors.blue, width: 1.4),
             ),
           ),
-          home: const _AppShell(),
+          filledButtonTheme: FilledButtonThemeData(
+            style: FilledButton.styleFrom(
+              backgroundColor: AppColors.blue,
+              foregroundColor: Colors.white,
+              minimumSize: const Size(0, 38),
+              shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(6)),
+              textStyle:
+                  const TextStyle(fontWeight: FontWeight.w700, fontSize: 13),
+            ),
+          ),
+          textButtonTheme: TextButtonThemeData(
+            style: TextButton.styleFrom(
+              foregroundColor: AppColors.blue,
+              shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(5)),
+            ),
+          ),
         ),
+        home: const _AppShell(),
       ),
     );
   }
@@ -91,29 +104,39 @@ class _AppShell extends ConsumerWidget {
     ];
 
     return Scaffold(
-      body: Row(
+      body: Column(
         children: [
-          _NavigationRail(
-            selectedIndex: current,
-            onChanged: (index) =>
-                ref.read(appNavigationProvider.notifier).goTo(index),
+          const _WindowTitleBar(),
+          const Divider(height: 1, color: AppColors.line),
+          Expanded(
+            child: Row(
+              children: [
+                _NavigationRail(
+                  selectedIndex: current,
+                  onChanged: (index) =>
+                      ref.read(appNavigationProvider.notifier).goTo(index),
+                ),
+                const VerticalDivider(width: 1, color: AppColors.line),
+                Expanded(child: IndexedStack(index: current, children: pages)),
+              ],
+            ),
           ),
-          const VerticalDivider(width: 1, color: AppColors.line),
-          Expanded(child: IndexedStack(index: current, children: pages)),
         ],
       ),
     );
   }
 }
 
-class _NavigationRail extends StatelessWidget {
+class _NavigationRail extends ConsumerWidget {
   const _NavigationRail({required this.selectedIndex, required this.onChanged});
 
   final int selectedIndex;
   final ValueChanged<int> onChanged;
 
   @override
-  Widget build(BuildContext context) {
+  Widget build(BuildContext context, WidgetRef ref) {
+    final packageInfo =
+        ref.watch(appPackageInfoProvider).valueOrNull ?? fallbackPackageInfo;
     const destinations = [
       _NavigationDestination(
           Icons.space_dashboard_outlined, Icons.space_dashboard, '首页'),
@@ -129,12 +152,10 @@ class _NavigationRail extends StatelessWidget {
       child: ColoredBox(
         color: AppColors.surface,
         child: Padding(
-          padding: const EdgeInsets.fromLTRB(18, 20, 18, 16),
+          padding: const EdgeInsets.fromLTRB(18, 14, 18, 16),
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.stretch,
             children: [
-              const _Brand(),
-              const SizedBox(height: 28),
               for (var index = 0; index < destinations.length; index++)
                 _NavItem(
                   destination: destinations[index],
@@ -162,7 +183,7 @@ class _NavigationRail extends StatelessWidget {
                 ),
               ),
               const SizedBox(height: 10),
-              const Text('Scanner 3.1',
+              Text('${packageInfo.appName} ${packageInfo.version}',
                   textAlign: TextAlign.center,
                   style: TextStyle(color: AppColors.muted, fontSize: 11)),
             ],
@@ -173,36 +194,28 @@ class _NavigationRail extends StatelessWidget {
   }
 }
 
-class _Brand extends StatelessWidget {
-  const _Brand();
+class _WindowTitleBar extends ConsumerWidget {
+  const _WindowTitleBar();
 
   @override
-  Widget build(BuildContext context) {
-    return const Row(
-      children: [
-        DecoratedBox(
-          decoration: BoxDecoration(
-              color: AppColors.blue,
-              borderRadius: BorderRadius.all(Radius.circular(7))),
-          child: SizedBox(
-              width: 34,
-              height: 34,
-              child: Icon(Icons.radar_outlined, color: Colors.white, size: 20)),
+  Widget build(BuildContext context, WidgetRef ref) {
+    final packageInfo =
+        ref.watch(appPackageInfoProvider).valueOrNull ?? fallbackPackageInfo;
+    return SizedBox(
+      height: 36,
+      child: WindowCaption(
+        backgroundColor: AppColors.surface,
+        brightness: Brightness.light,
+        title: Row(
+          children: [
+            const Icon(Icons.radar_outlined, color: AppColors.blue, size: 17),
+            const SizedBox(width: 7),
+            Text(packageInfo.appName,
+                style:
+                    const TextStyle(fontWeight: FontWeight.w600, fontSize: 12)),
+          ],
         ),
-        SizedBox(width: 9),
-        Expanded(
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Text('存储扫描器',
-                  style: TextStyle(fontSize: 15, fontWeight: FontWeight.w700)),
-              SizedBox(height: 1),
-              Text('本地文件分析',
-                  style: TextStyle(color: AppColors.muted, fontSize: 11)),
-            ],
-          ),
-        ),
-      ],
+      ),
     );
   }
 }

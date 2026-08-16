@@ -3,6 +3,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../navigation.dart';
 import '../ui/app_ui.dart';
+import 'scan_exclusions.dart';
 
 class SettingsScreen extends ConsumerStatefulWidget {
   const SettingsScreen({super.key});
@@ -15,14 +16,96 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
   bool _showPaths = true;
   bool _confirmTrash = true;
 
+  Future<void> _addExclusionRule() async {
+    final controller = TextEditingController();
+    var kind = ScanExclusionKind.directory;
+    final result = await showDialog<_NewExclusionRule>(
+      context: context,
+      builder: (dialogContext) => StatefulBuilder(
+        builder: (context, setDialogState) => AlertDialog(
+          title: const Text('添加排除规则'),
+          content: SizedBox(
+            width: 450,
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                SegmentedButton<ScanExclusionKind>(
+                  segments: const [
+                    ButtonSegment(
+                      value: ScanExclusionKind.directory,
+                      label: Text('目录名'),
+                      icon: Icon(Icons.folder_outlined),
+                    ),
+                    ButtonSegment(
+                      value: ScanExclusionKind.glob,
+                      label: Text('通配符'),
+                      icon: Icon(Icons.data_object_outlined),
+                    ),
+                    ButtonSegment(
+                      value: ScanExclusionKind.regex,
+                      label: Text('正则'),
+                      icon: Icon(Icons.code_outlined),
+                    ),
+                  ],
+                  selected: {kind},
+                  onSelectionChanged: (selected) => setDialogState(
+                    () => kind = selected.first,
+                  ),
+                ),
+                const SizedBox(height: 16),
+                TextField(
+                  controller: controller,
+                  autofocus: true,
+                  onSubmitted: (value) {
+                    if (value.trim().isNotEmpty) {
+                      Navigator.of(dialogContext).pop(
+                        _NewExclusionRule(kind, value.trim()),
+                      );
+                    }
+                  },
+                  decoration: InputDecoration(
+                    labelText: '规则',
+                    hintText: _ruleHint(kind),
+                  ),
+                ),
+              ],
+            ),
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.of(dialogContext).pop(),
+              child: const Text('取消'),
+            ),
+            FilledButton(
+              onPressed: () {
+                final pattern = controller.text.trim();
+                if (pattern.isEmpty) return;
+                Navigator.of(dialogContext).pop(
+                  _NewExclusionRule(kind, pattern),
+                );
+              },
+              child: const Text('添加'),
+            ),
+          ],
+        ),
+      ),
+    );
+    controller.dispose();
+    if (result == null || !mounted) return;
+    ref.read(scanExclusionsProvider.notifier).add(result.kind, result.pattern);
+  }
+
   @override
   Widget build(BuildContext context) {
+    final exclusions = ref.watch(scanExclusionsProvider);
+
     return Padding(
       padding: const EdgeInsets.fromLTRB(30, 28, 30, 24),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          const PageHeading(title: '设置', subtitle: '本次会话的显示和文件操作偏好'),
+          const PageHeading(title: '设置', subtitle: '扫描、显示和文件操作偏好'),
           const SizedBox(height: 24),
           Expanded(
             child: ListView(
@@ -123,19 +206,37 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
                   ),
                 ),
                 const SizedBox(height: 24),
-                const SectionTitle(title: '默认排除位置'),
-                const SizedBox(height: 10),
-                const SurfacePanel(
-                  child: Wrap(
-                    spacing: 8,
-                    runSpacing: 8,
-                    children: [
-                      _ExcludeChip(label: '.git'),
-                      _ExcludeChip(label: 'node_modules'),
-                      _ExcludeChip(label: 'System Volume Information'),
-                    ],
+                SectionTitle(
+                  title: '扫描排除规则',
+                  trailing: FilledButton.icon(
+                    onPressed: _addExclusionRule,
+                    icon: const Icon(Icons.add, size: 17),
+                    label: const Text('添加规则'),
                   ),
                 ),
+                const SizedBox(height: 10),
+                SurfacePanel(
+                  padding: EdgeInsets.zero,
+                  child: exclusions.isEmpty
+                      ? const Padding(
+                          padding: EdgeInsets.symmetric(
+                              horizontal: 17, vertical: 18),
+                          child: Text('未排除任何位置',
+                              style: TextStyle(color: AppColors.muted)),
+                        )
+                      : Column(
+                          children: [
+                            for (var index = 0;
+                                index < exclusions.length;
+                                index++) ...[
+                              _ExclusionRuleRow(rule: exclusions[index]),
+                              if (index != exclusions.length - 1)
+                                const Divider(height: 1, color: AppColors.line),
+                            ],
+                          ],
+                        ),
+                ),
+                const SizedBox(height: 24),
               ],
             ),
           ),
@@ -143,6 +244,21 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
       ),
     );
   }
+}
+
+class _NewExclusionRule {
+  const _NewExclusionRule(this.kind, this.pattern);
+
+  final ScanExclusionKind kind;
+  final String pattern;
+}
+
+String _ruleHint(ScanExclusionKind kind) {
+  return switch (kind) {
+    ScanExclusionKind.directory => '例如：.cache',
+    ScanExclusionKind.glob => '例如：*.tmp 或 build/**',
+    ScanExclusionKind.regex => r'例如：(^|[\\/])cache([\\/]|$)',
+  };
 }
 
 class _SettingInfo extends StatelessWidget {
@@ -180,19 +296,55 @@ class _SettingInfo extends StatelessWidget {
   }
 }
 
-class _ExcludeChip extends StatelessWidget {
-  const _ExcludeChip({required this.label});
+class _ExclusionRuleRow extends ConsumerWidget {
+  const _ExclusionRuleRow({required this.rule});
 
-  final String label;
+  final ScanExclusionRule rule;
 
   @override
-  Widget build(BuildContext context) {
-    return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 9, vertical: 6),
-      decoration: BoxDecoration(
-          color: AppColors.canvas, borderRadius: BorderRadius.circular(5)),
-      child: Text(label,
-          style: const TextStyle(color: AppColors.muted, fontSize: 12)),
+  Widget build(BuildContext context, WidgetRef ref) {
+    final (icon, color, kindLabel) = switch (rule.kind) {
+      ScanExclusionKind.directory => (
+          Icons.folder_outlined,
+          AppColors.blue,
+          '目录名',
+        ),
+      ScanExclusionKind.glob => (
+          Icons.data_object_outlined,
+          AppColors.amber,
+          '通配符',
+        ),
+      ScanExclusionKind.regex => (
+          Icons.code_outlined,
+          AppColors.green,
+          '正则',
+        ),
+    };
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(17, 10, 8, 10),
+      child: Row(
+        children: [
+          Icon(icon, color: color, size: 19),
+          const SizedBox(width: 10),
+          Expanded(
+            child: Text(
+              rule.pattern,
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
+              style: const TextStyle(fontSize: 13, fontWeight: FontWeight.w600),
+            ),
+          ),
+          const SizedBox(width: 10),
+          StatusChip(label: kindLabel, color: color),
+          IconButton(
+            tooltip: '删除规则',
+            onPressed: () =>
+                ref.read(scanExclusionsProvider.notifier).remove(rule.id),
+            icon: const Icon(Icons.delete_outline,
+                size: 19, color: AppColors.muted),
+          ),
+        ],
+      ),
     );
   }
 }

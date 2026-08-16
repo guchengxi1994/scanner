@@ -13,14 +13,14 @@ pub fn project_scan_stream(s: StreamSink<ProjectDetail>) -> anyhow::Result<()> {
 }
 
 pub fn project_scan(p: String) {
-    let pv = ProjectView { 0: p };
+    let pv = ProjectView { path: p };
     if let Err(error) = pv.scan() {
         println!("[rust] error {error}");
     }
 }
 
 pub fn project_scan_really_fast(p: String) {
-    let pv = ProjectView { 0: p };
+    let pv = ProjectView { path: p };
     if let Err(error) = pv.scan_in_multi_threads() {
         println!("[rust] error {error}");
     }

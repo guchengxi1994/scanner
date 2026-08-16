@@ -3,6 +3,10 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:scanner/src/rust/api/project_api.dart';
 import 'package:scanner/src/rust/project.dart';
 
+import '../history/scan_history.dart';
+import '../settings/scan_exclusions.dart';
+import '../settings/scan_rule_runtime.dart';
+
 enum ProjectViewScanningStatus { idle, scanning, completed }
 
 class ProjectViewState {
@@ -15,6 +19,7 @@ class ProjectViewState {
     BigInt? scannedBytes,
     this.completedRoots = 0,
     this.totalRoots = 0,
+    this.historyId,
   }) : scannedBytes = scannedBytes ?? BigInt.zero;
 
   final String path;
@@ -25,6 +30,7 @@ class ProjectViewState {
   final BigInt scannedBytes;
   final int completedRoots;
   final int totalRoots;
+  final String? historyId;
 
   bool get isScanning => status == ProjectViewScanningStatus.scanning;
   bool get hasCompleted => status == ProjectViewScanningStatus.completed;
@@ -38,6 +44,7 @@ class ProjectViewState {
     BigInt? scannedBytes,
     int? completedRoots,
     int? totalRoots,
+    String? historyId,
   }) {
     return ProjectViewState(
       path: path ?? this.path,
@@ -48,6 +55,7 @@ class ProjectViewState {
       scannedBytes: scannedBytes ?? this.scannedBytes,
       completedRoots: completedRoots ?? this.completedRoots,
       totalRoots: totalRoots ?? this.totalRoots,
+      historyId: historyId ?? this.historyId,
     );
   }
 }
@@ -60,11 +68,20 @@ class ProjectViewNotifier extends Notifier<ProjectViewState> {
     if (state.isScanning) return;
     final directoryPath = await getDirectoryPath();
     if (directoryPath == null) return;
+    final exclusions =
+        await ref.read(scanExclusionsProvider.notifier).ensureLoaded();
+    await syncScanExclusions(
+        exclusions.map((rule) => rule.backendValue).toList());
 
+    final historyId = ref.read(scanHistoryProvider.notifier).start(
+          ScanHistoryKind.largeFiles,
+          directoryPath,
+        );
     state = ProjectViewState(
       path: directoryPath,
       status: ProjectViewScanningStatus.scanning,
       currentPath: directoryPath,
+      historyId: historyId,
     );
     projectScan(p: directoryPath);
   }
@@ -96,6 +113,14 @@ class ProjectViewNotifier extends Notifier<ProjectViewState> {
       completedRoots: completed,
       totalRoots: total,
     );
+    if (done && state.historyId != null) {
+      ref.read(scanHistoryProvider.notifier).complete(
+            state.historyId!,
+            fileCount: state.scannedFiles,
+            bytes: state.scannedBytes,
+            resultCount: state.details.length,
+          );
+    }
   }
 }
 

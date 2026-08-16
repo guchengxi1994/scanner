@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'dart:math' as math;
 
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -106,18 +107,77 @@ class _ScannerScreenState extends ConsumerState<ScannerScreen> {
   }
 }
 
-class _DuplicateStatus extends StatelessWidget {
+class _DuplicateStatus extends StatefulWidget {
   const _DuplicateStatus({required this.state, required this.reclaimable});
 
   final ScannerState state;
   final BigInt reclaimable;
 
   @override
+  State<_DuplicateStatus> createState() => _DuplicateStatusState();
+}
+
+class _DuplicateStatusState extends State<_DuplicateStatus>
+    with SingleTickerProviderStateMixin {
+  late final AnimationController _activityController;
+  Timer? _elapsedTimer;
+  DateTime? _startedAt;
+  Duration _elapsed = Duration.zero;
+
+  @override
+  void initState() {
+    super.initState();
+    _activityController = AnimationController(
+      vsync: this,
+      duration: const Duration(milliseconds: 1100),
+    );
+    _syncActivity();
+  }
+
+  @override
+  void didUpdateWidget(covariant _DuplicateStatus oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (oldWidget.state.scanning != widget.state.scanning) _syncActivity();
+  }
+
+  void _syncActivity() {
+    if (widget.state.scanning) {
+      _startedAt = DateTime.now();
+      _elapsed = Duration.zero;
+      _activityController.repeat();
+      _elapsedTimer?.cancel();
+      _elapsedTimer = Timer.periodic(const Duration(seconds: 1), (_) {
+        if (mounted && _startedAt != null) {
+          setState(() => _elapsed = DateTime.now().difference(_startedAt!));
+        }
+      });
+    } else {
+      _activityController.stop();
+      _elapsedTimer?.cancel();
+    }
+  }
+
+  @override
+  void dispose() {
+    _elapsedTimer?.cancel();
+    _activityController.dispose();
+    super.dispose();
+  }
+
+  @override
   Widget build(BuildContext context) {
+    final state = widget.state;
+    final reclaimable = widget.reclaimable;
     final isFinished = state.path.isNotEmpty && !state.scanning;
+    final isMatching = state.totalCandidateCount > 0;
+    final hasConfirmedCandidateProgress = state.matchedCandidateCount > 0;
+    final progress = isMatching
+        ? state.matchedCandidateCount / state.totalCandidateCount
+        : null;
     return SurfacePanel(
       padding: const EdgeInsets.all(18),
       child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
           Row(
             children: [
@@ -129,10 +189,16 @@ class _DuplicateStatus extends StatelessWidget {
                       state.scanning ? AppColors.amberSoft : AppColors.blueSoft,
                   borderRadius: BorderRadius.circular(7),
                 ),
-                child: Icon(
-                  state.scanning ? Icons.sync : Icons.copy_outlined,
-                  color: state.scanning ? AppColors.amber : AppColors.blue,
-                ),
+                child: state.scanning
+                    ? AnimatedBuilder(
+                        animation: _activityController,
+                        builder: (context, child) => Transform.rotate(
+                          angle: _activityController.value * math.pi * 2,
+                          child: child,
+                        ),
+                        child: const Icon(Icons.sync, color: AppColors.amber),
+                      )
+                    : const Icon(Icons.copy_outlined, color: AppColors.blue),
               ),
               const SizedBox(width: 12),
               Expanded(
@@ -166,7 +232,22 @@ class _DuplicateStatus extends StatelessWidget {
           ),
           if (state.scanning) ...[
             const SizedBox(height: 15),
-            const LinearProgressIndicator(minHeight: 5),
+            LinearProgressIndicator(
+              // Reading the first candidate can take time. Keep the bar
+              // visibly moving until the first completed unit is available.
+              value: hasConfirmedCandidateProgress ? progress : null,
+              minHeight: 5,
+            ),
+            const SizedBox(height: 9),
+            _ScanActivityLine(
+              animation: _activityController,
+              label: isMatching
+                  ? hasConfirmedCandidateProgress
+                      ? '正在校验候选内容，结果会按组陆续显示'
+                      : '正在读取首个候选文件，磁盘校验仍在进行'
+                  : '正在枚举文件并建立大小索引',
+              elapsed: _formatElapsed(_elapsed),
+            ),
           ],
           const SizedBox(height: 15),
           Wrap(
@@ -174,6 +255,12 @@ class _DuplicateStatus extends StatelessWidget {
             runSpacing: 8,
             children: [
               _ScanFact(label: '已发现文件', value: '${state.totalFileCount}'),
+              if (state.totalCandidateCount > 0)
+                _ScanFact(
+                  label: '已验证候选',
+                  value:
+                      '${state.matchedCandidateCount} / ${state.totalCandidateCount}',
+                ),
               _ScanFact(label: '重复文件组', value: '${state.results.length}'),
               _ScanFact(label: '可回收空间', value: formatBytes(reclaimable)),
             ],
@@ -182,6 +269,61 @@ class _DuplicateStatus extends StatelessWidget {
       ),
     );
   }
+}
+
+class _ScanActivityLine extends StatelessWidget {
+  const _ScanActivityLine({
+    required this.animation,
+    required this.label,
+    required this.elapsed,
+  });
+
+  final Animation<double> animation;
+  final String label;
+  final String elapsed;
+
+  @override
+  Widget build(BuildContext context) {
+    return Row(
+      children: [
+        AnimatedBuilder(
+          animation: animation,
+          builder: (context, child) => Opacity(
+            opacity: 0.42 + animation.value * 0.58,
+            child: child,
+          ),
+          child: Container(
+            width: 6,
+            height: 6,
+            decoration: const BoxDecoration(
+              color: AppColors.amber,
+              shape: BoxShape.circle,
+            ),
+          ),
+        ),
+        const SizedBox(width: 7),
+        Expanded(
+          child: Text(
+            label,
+            maxLines: 1,
+            overflow: TextOverflow.ellipsis,
+            style: const TextStyle(color: AppColors.muted, fontSize: 11),
+          ),
+        ),
+        const SizedBox(width: 10),
+        Text(
+          '已用 $elapsed',
+          style: const TextStyle(color: AppColors.muted, fontSize: 11),
+        ),
+      ],
+    );
+  }
+}
+
+String _formatElapsed(Duration elapsed) {
+  String twoDigits(int value) => value.toString().padLeft(2, '0');
+  final minutes = elapsed.inMinutes;
+  return '${twoDigits(minutes)}:${twoDigits(elapsed.inSeconds.remainder(60))}';
 }
 
 class _ScanFact extends StatelessWidget {

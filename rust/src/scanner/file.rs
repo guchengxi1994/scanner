@@ -12,7 +12,7 @@ use sha2::{Digest, Sha256};
 
 use super::difference::Difference;
 
-const SAMPLE_SIZE: usize = 64 * 1024;
+pub const SAMPLE_SIZE: usize = 64 * 1024;
 const HASH_BUFFER_SIZE: usize = 1024 * 1024;
 
 #[derive(Debug, Clone, Serialize, Deserialize)]

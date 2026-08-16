@@ -7,6 +7,7 @@ use std::{
 use walkdir::WalkDir;
 
 use crate::frb_generated::StreamSink;
+use crate::scan_rules::active_rules;
 
 const PROGRESS_INTERVAL: Duration = Duration::from_millis(200);
 
@@ -47,20 +48,24 @@ fn send_progress_event(
     });
 }
 
-pub struct ProjectView(pub String);
+pub struct ProjectView {
+    pub path: String,
+}
 
 impl ProjectView {
     /// Computes every top-level entry with a single traversal per subtree.
     /// The old implementation repeatedly walked the selected root for each
     /// child, multiplying I/O cost on directories with many top-level items.
     pub fn scan(&self) -> anyhow::Result<()> {
-        let roots: Vec<PathBuf> = WalkDir::new(&self.0)
+        let rules = active_rules();
+        let roots: Vec<PathBuf> = WalkDir::new(&self.path)
             .follow_links(false)
             .min_depth(1)
             .max_depth(1)
             .into_iter()
             .filter_map(Result::ok)
             .map(|entry| entry.into_path())
+            .filter(|path| !rules.should_skip(path))
             .collect();
         let total_roots = roots.len() as u64;
         let mut scanned_files = 0_u64;
@@ -83,6 +88,7 @@ impl ProjectView {
                 for entry in WalkDir::new(&root)
                     .follow_links(false)
                     .into_iter()
+                    .filter_entry(|entry| !rules.should_skip(entry.path()))
                     .filter_map(Result::ok)
                 {
                     if !entry.file_type().is_file() {
@@ -125,7 +131,7 @@ impl ProjectView {
         }
 
         send_progress_event(
-            self.0.clone(),
+            self.path.clone(),
             scanned_files,
             scanned_bytes,
             total_roots,

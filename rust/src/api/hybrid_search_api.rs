@@ -6,6 +6,7 @@ use crate::{
 };
 
 const CONTENT_SEARCH_PREFIX: &str = "__anydoc_content_search__:";
+const SCAN_EXCLUSIONS_SYNC_PREFIX: &str = "__scanner_exclusions_sync__";
 
 pub fn hybrid_search_sync(
     p: String,
@@ -17,6 +18,14 @@ pub fn hybrid_search_sync(
     regex: Vec<String>,
     search_type: SearchType,
 ) -> Vec<String> {
+    if regex
+        .iter()
+        .any(|value| value == SCAN_EXCLUSIONS_SYNC_PREFIX)
+    {
+        crate::scan_rules::set_active_rules(&excludes);
+        return vec![];
+    }
+
     if let Some(query) = regex
         .iter()
         .find_map(|value| value.strip_prefix(CONTENT_SEARCH_PREFIX))

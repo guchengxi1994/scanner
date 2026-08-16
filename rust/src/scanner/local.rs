@@ -2,8 +2,10 @@ use std::time::{Duration, Instant};
 
 use walkdir::WalkDir;
 
+use crate::scan_rules::active_rules;
+
 use super::{
-    compare_result::CompareResult,
+    compare_result::{send_result, CompareResult},
     event::{CompareEvent, DoneEvent, ResEvent, ScannerEvent, EVENT_SINK},
     file::{File, GLOBAL_FILESET},
     interface::Scanner,
@@ -12,7 +14,9 @@ use super::{
 const FLUSH_BATCH_SIZE: usize = 512;
 const PROGRESS_INTERVAL: Duration = Duration::from_millis(250);
 
-pub struct LocalScanner(pub String);
+pub struct LocalScanner {
+    pub path: String,
+}
 
 #[async_trait::async_trait]
 impl Scanner for LocalScanner {
@@ -21,13 +25,15 @@ impl Scanner for LocalScanner {
         let mut pending = Vec::with_capacity(FLUSH_BATCH_SIZE);
         let mut file_count = 0_u64;
         let mut last_progress = Instant::now();
+        let rules = active_rules();
 
         Self::before_scan();
         send_scanner_event("Scanning files".to_string(), 0, 0.0);
 
-        for entry in WalkDir::new(&self.0)
+        for entry in WalkDir::new(&self.path)
             .follow_links(false)
             .into_iter()
+            .filter_entry(|entry| !rules.should_skip(entry.path()))
             .filter_map(Result::ok)
         {
             if !entry.file_type().is_file() {
@@ -70,8 +76,17 @@ impl Scanner for LocalScanner {
     fn on_finished(&self) -> anyhow::Result<()> {
         let compare_started_at = Instant::now();
         let file_set = GLOBAL_FILESET.read().unwrap().clone();
-        let results = CompareResult::from_set(file_set);
-        results.refresh();
+        let mut last_progress = Instant::now() - PROGRESS_INTERVAL;
+        CompareResult::from_set(
+            file_set,
+            |processed, total| {
+                if last_progress.elapsed() >= PROGRESS_INTERVAL || processed == total {
+                    send_matching_progress(processed, total, compare_started_at.elapsed().as_secs_f32());
+                    last_progress = Instant::now();
+                }
+            },
+            send_result,
+        );
         send_compare_event(
             "Duplicate scan".to_string(),
             compare_started_at.elapsed().as_secs_f32(),
@@ -83,6 +98,14 @@ impl Scanner for LocalScanner {
         GLOBAL_FILESET.write().unwrap().update_list(files);
         Ok(())
     }
+}
+
+fn send_matching_progress(processed: u64, total: u64, duration: f32) {
+    send_scanner_event(
+        format!("__duplicate_match_progress__:{processed}:{total}"),
+        0,
+        duration,
+    );
 }
 
 fn send_scanner_event(event_type: String, count: u64, duration: f32) {

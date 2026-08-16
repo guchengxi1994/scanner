@@ -2,20 +2,23 @@ import 'dart:convert';
 
 import 'package:file_selector/file_selector.dart' hide openFile;
 import 'package:flutter/material.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:scanner/src/rust/api/hybrid_search_api.dart';
 import 'package:scanner/src/rust/api/tools_api.dart';
 import 'package:scanner/src/rust/hybrid_search.dart';
 
 import '../ui/app_ui.dart';
+import '../settings/scan_exclusions.dart';
 
-class DocumentSearchScreen extends StatefulWidget {
+class DocumentSearchScreen extends ConsumerStatefulWidget {
   const DocumentSearchScreen({super.key});
 
   @override
-  State<DocumentSearchScreen> createState() => _DocumentSearchScreenState();
+  ConsumerState<DocumentSearchScreen> createState() =>
+      _DocumentSearchScreenState();
 }
 
-class _DocumentSearchScreenState extends State<DocumentSearchScreen> {
+class _DocumentSearchScreenState extends ConsumerState<DocumentSearchScreen> {
   static const _contentSearchPrefix = '__anydoc_content_search__:';
   final _queryController = TextEditingController();
   String _path = '';
@@ -39,6 +42,7 @@ class _DocumentSearchScreenState extends State<DocumentSearchScreen> {
   Future<void> _search() async {
     final query = _queryController.text.trim();
     if (_path.isEmpty || query.isEmpty || _searching) return;
+    await ref.read(scanExclusionsProvider.notifier).ensureLoaded();
 
     setState(() {
       _searching = true;

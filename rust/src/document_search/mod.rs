@@ -1,6 +1,8 @@
 use serde::Serialize;
 use walkdir::WalkDir;
 
+use crate::scan_rules::active_rules;
+
 #[derive(Debug, Serialize)]
 pub struct DocumentSearchResult {
     pub path: String,
@@ -17,9 +19,11 @@ pub fn search(root: String, query: String, max_results: u32) -> Vec<DocumentSear
     }
 
     let mut results = Vec::new();
+    let rules = active_rules();
     for entry in WalkDir::new(root)
         .follow_links(false)
         .into_iter()
+        .filter_entry(|entry| !rules.should_skip(entry.path()))
         .filter_map(Result::ok)
     {
         if !entry.file_type().is_file() || anydoc::Format::from_path(entry.path()).is_none() {
