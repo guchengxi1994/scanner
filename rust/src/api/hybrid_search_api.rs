@@ -5,6 +5,8 @@ use crate::{
     hybrid_search::{HybridSearch, HybridSearchDetail, SearchType, HYBRID_SEARCH_SINK},
 };
 
+const CONTENT_SEARCH_PREFIX: &str = "__anydoc_content_search__:";
+
 pub fn hybrid_search_sync(
     p: String,
     case_sensitive: bool,
@@ -15,6 +17,13 @@ pub fn hybrid_search_sync(
     regex: Vec<String>,
     search_type: SearchType,
 ) -> Vec<String> {
+    if let Some(query) = regex
+        .iter()
+        .find_map(|value| value.strip_prefix(CONTENT_SEARCH_PREFIX))
+    {
+        return crate::document_search::search_as_json(p, query.to_string(), 100);
+    }
+
     let h = HybridSearch::new(
         p,
         case_sensitive,

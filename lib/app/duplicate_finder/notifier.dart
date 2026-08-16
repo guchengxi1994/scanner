@@ -17,7 +17,7 @@ class ScannerNotifier extends Notifier<ScannerState> {
       ? 0
       : state.comparedFileCount / state.totalFileCount;
 
-  refresh() {
+  void refresh() {
     state = state.copyWith(
         compareResults: [],
         stage: "",
@@ -27,11 +27,12 @@ class ScannerNotifier extends Notifier<ScannerState> {
         comparedFileCount: 0);
   }
 
-  done() {
+  void done() {
     state = state.copyWith(scanning: false);
   }
 
-  startScan() async {
+  Future<void> startScan() async {
+    if (state.scanning) return;
     refresh();
     final String? directoryPath = await getDirectoryPath();
     if (directoryPath == null) {
@@ -43,7 +44,7 @@ class ScannerNotifier extends Notifier<ScannerState> {
     scan(p: directoryPath);
   }
 
-  changeAsc() {
+  void changeAsc() {
     bool b = !state.asc;
     if (b) {
       state = state.copyWith(
@@ -58,13 +59,13 @@ class ScannerNotifier extends Notifier<ScannerState> {
     }
   }
 
-  refreshList() {
+  void refreshList() {
     state = state.copyWith(
         asc: true,
         results: state.results..sort((a, b) => a.index.compareTo(b.index)));
   }
 
-  changeShowAll() {
+  void changeShowAll() {
     bool b = !state.showAll;
 
     if (b) {
@@ -84,34 +85,30 @@ class ScannerNotifier extends Notifier<ScannerState> {
     }
   }
 
-  changeStage(ResEvent s) {
-    final v = switch (s) {
-      ResEvent_ScannerEvent() => eventToString(s: s),
-      ResEvent_CompareEvent() => "${state.stage};${eventToString(s: s)}",
-      ResEvent_DoneEvent() => "Done",
-    };
-
+  void changeStage(ResEvent s) {
     if (s is ResEvent_ScannerEvent) {
-      state = state.copyWith(totalFileCount: s.field0.count.toInt());
-    }
-
-    if (v == "Done") {
+      state = state.copyWith(
+        totalFileCount: s.field0.count.toInt(),
+        stage: s.field0.eventType,
+      );
+    } else if (s is ResEvent_CompareEvent) {
+      state = state.copyWith(stage: '正在验证文件内容');
+    } else if (s is ResEvent_DoneEvent) {
       done();
-    } else {
-      state = state.copyWith(stage: v);
     }
   }
 
-  addItem(CompareResult result) {
+  void addItem(CompareResult result) {
+    final nextResults = [...state.compareResults, result];
     state = state.copyWith(
-        compareResults: [...state.compareResults, result],
-        results: [...state.compareResults, result],
+        compareResults: nextResults,
+        results: nextResults,
         showAll: true,
         asc: true,
         comparedFileCount: state.comparedFileCount + result.count.toInt());
   }
 
-  updateCompareResult(CompareResult result) {
+  void updateCompareResult(CompareResult result) {
     state = state.copyWith(
         compareResults: state.compareResults
             .map((e) => e.index == result.index ? result : e)
@@ -121,7 +118,7 @@ class ScannerNotifier extends Notifier<ScannerState> {
             .toList());
   }
 
-  removeFileFromList(BigInt resultId, File s) {
+  void removeFileFromList(BigInt resultId, File s) {
     final result = state.compareResults.firstWhere((e) => e.index == resultId);
 
     final c = CompareResult(

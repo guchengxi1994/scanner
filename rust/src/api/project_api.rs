@@ -13,29 +13,15 @@ pub fn project_scan_stream(s: StreamSink<ProjectDetail>) -> anyhow::Result<()> {
 }
 
 pub fn project_scan(p: String) {
-    let rt = tokio::runtime::Runtime::new().unwrap();
-    rt.block_on(async {
-        let pv = ProjectView { 0: p };
-        let r = pv.scan().await;
-        match r {
-            Ok(_) => {}
-            Err(e) => {
-                println!("[rust] error {}", e);
-            }
-        }
-    });
+    let pv = ProjectView { 0: p };
+    if let Err(error) = pv.scan() {
+        println!("[rust] error {error}");
+    }
 }
 
 pub fn project_scan_really_fast(p: String) {
-    let rt = tokio::runtime::Runtime::new().unwrap();
-    rt.block_on(async {
-        let pv = ProjectView { 0: p };
-        let r = pv.scan_in_multi_threads().await;
-        match r {
-            Ok(_) => {}
-            Err(e) => {
-                println!("[rust] error {}", e);
-            }
-        }
-    });
+    let pv = ProjectView { 0: p };
+    if let Err(error) = pv.scan_in_multi_threads() {
+        println!("[rust] error {error}");
+    }
 }

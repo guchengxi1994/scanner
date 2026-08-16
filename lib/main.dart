@@ -7,8 +7,8 @@ import 'package:window_manager/window_manager.dart';
 import 'app/app.dart';
 
 Future<void> main() async {
-  await RustLib.init();
   WidgetsFlutterBinding.ensureInitialized();
+  await RustLib.init();
   Logger.root.level = Level.ALL; // defaults to Level.INFO
   Logger.root.onRecord.listen((record) {
     if (kDebugMode) {
@@ -19,15 +19,14 @@ Future<void> main() async {
   await windowManager.ensureInitialized();
 
   WindowOptions windowOptions = const WindowOptions(
-    size: Size(1280, 720),
-    maximumSize: Size(1280, 720),
-    minimumSize: Size(1280, 720),
+    size: Size(1440, 860),
+    minimumSize: Size(1080, 680),
     backgroundColor: Colors.transparent,
     skipTaskbar: false,
   );
 
-  await windowManager.setMaximizable(false);
-  await windowManager.setMinimizable(false);
+  await windowManager.setMaximizable(true);
+  await windowManager.setMinimizable(true);
 
   windowManager.waitUntilReadyToShow(windowOptions, () async {
     await windowManager.show();

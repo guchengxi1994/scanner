@@ -5,7 +5,7 @@ mod tests {
 
     use crate::{
         api::scanner_api::scan,
-        scanner::file::{File, GLOBAL_FILESET, GLOBAL_FILE_FULL_HASH, GLOBAL_FILE_HASH},
+        scanner::file::File,
         tools::{
             move_file_to_trash::move_file_to_trash,
             openfile_and_highlight::open_folder_and_highlight_file,
@@ -67,8 +67,6 @@ mod tests {
         println!("{}", a.compare_hash(&b));
         println!("{}", a == b);
 
-        println!("{:?}", &GLOBAL_FILE_HASH);
-        println!("{:?}", &GLOBAL_FILE_FULL_HASH);
     }
 
     #[test]

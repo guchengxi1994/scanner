@@ -1,7 +1,9 @@
-use super::file::{File, FileSet};
+use std::{collections::HashMap, sync::RwLock};
+
 use crate::frb_generated::StreamSink;
 use serde::{Deserialize, Serialize};
-use std::{collections::HashMap, sync::RwLock};
+
+use super::file::{File, FileSet};
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct CompareResult {
@@ -15,27 +17,52 @@ pub struct CompareResult {
 pub struct CompareResults(pub Vec<CompareResult>);
 
 impl CompareResult {
+    fn find_duplicates(files: Vec<File>) -> Vec<Vec<File>> {
+        let mut sample_groups: HashMap<String, Vec<File>> = HashMap::new();
+        for file in files {
+            if let Ok(hash) = file.get_file_hash() {
+                sample_groups.entry(hash).or_default().push(file);
+            }
+        }
+
+        let mut duplicates = Vec::new();
+        for candidates in sample_groups.into_values().filter(|group| group.len() > 1) {
+            let mut full_groups: HashMap<String, Vec<File>> = HashMap::new();
+            for file in candidates {
+                if let Ok(hash) = file.get_full_hash() {
+                    full_groups.entry(hash).or_default().push(file);
+                }
+            }
+            duplicates.extend(full_groups.into_values().filter(|group| group.len() > 1));
+        }
+        duplicates
+    }
+
     pub fn from_set(set: FileSet) -> CompareResults {
+        let mut buckets: Vec<(u64, Vec<File>)> = set
+            .0
+            .into_iter()
+            .filter(|(_, files)| files.len() > 1)
+            .collect();
+        buckets.sort_by(|left, right| right.0.cmp(&left.0));
+
         let mut results = Vec::new();
-        for (i, (file_size, files)) in set.0.into_iter().enumerate() {
-            let count = files.len() as u64;
+        for (file_size, files) in buckets {
+            let groups = Self::find_duplicates(files);
+            if groups.is_empty() {
+                continue;
+            }
+
+            let count = groups.iter().map(|group| group.len() as u64).sum();
             results.push(CompareResult {
-                index: i as u64 + 1,
+                index: results.len() as u64 + 1,
                 file_size,
-                all_same_files: vec![files],
+                all_same_files: groups,
                 count,
             });
         }
-        CompareResults(results)
-    }
 
-    pub fn group_files(files: Vec<File>) -> (Vec<Vec<File>>, u64) {
-        let mut map: HashMap<File, Vec<File>> = HashMap::new();
-        let count = files.len() as u64;
-        for file in files {
-            map.entry(file.clone()).or_insert_with(Vec::new).push(file);
-        }
-        (map.into_values().collect(), count)
+        CompareResults(results)
     }
 }
 
@@ -43,42 +70,11 @@ impl CompareResults {
     pub fn refresh(&self) {
         if let Some(sink) = SCANNER_REFRESH_RESULTS_SINK.read().unwrap().as_ref() {
             for result in &self.0 {
-                let file_size = result.file_size;
-                let r = CompareResult::group_files(result.all_same_files[0].clone());
-                let grouped_files = r.0;
-
-                let c = CompareResult {
-                    index: result.index,
-                    all_same_files: grouped_files,
-                    file_size,
-                    count: r.1,
-                };
-                let _ = sink.add(c);
-            }
-        } else {
-            // for test
-            for result in &self.0 {
-                let file_size = result.file_size;
-                let r = CompareResult::group_files(result.all_same_files[0].clone());
-                let grouped_files = r.0;
-
-                let c = CompareResult {
-                    index: result.index,
-                    all_same_files: grouped_files,
-                    file_size,
-                    count: r.1,
-                };
-
-                if c.file_size == 0 {
-                    println!("c ==========> {}", serde_json::to_string(&c).unwrap());
-                }
+                let _ = sink.add(result.clone());
             }
         }
     }
 }
-
-// pub static SCANNER_COMPARE_RESULTS_SINK: RwLock<Option<StreamSink<CompareResults>>> =
-//     RwLock::new(None);
 
 pub static SCANNER_REFRESH_RESULTS_SINK: RwLock<Option<StreamSink<CompareResult>>> =
     RwLock::new(None);

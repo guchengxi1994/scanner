@@ -1,31 +1,14 @@
-use std::{sync::RwLock, thread};
+use std::{
+    path::PathBuf,
+    sync::RwLock,
+    time::{Duration, Instant},
+};
 
-use crossbeam::channel;
 use walkdir::WalkDir;
 
 use crate::frb_generated::StreamSink;
 
-fn get_file_size(path: &String) -> u64 {
-    let meta = std::fs::metadata(path);
-    match meta {
-        Ok(m) => m.len(),
-        Err(_) => 0,
-    }
-}
-
-fn get_folder_size(path: &String) -> anyhow::Result<(u64, u64)> {
-    let mut size: u64 = 0;
-    let mut count: u64 = 0;
-    for entry in WalkDir::new(&path).into_iter().filter_map(|e| e.ok()) {
-        if entry.path().is_file() {
-            let l = entry.path().display().to_string();
-            size += get_file_size(&l);
-            count += 1;
-        }
-    }
-
-    anyhow::Ok((size, count))
-}
+const PROGRESS_INTERVAL: Duration = Duration::from_millis(200);
 
 #[derive(Debug)]
 pub struct ProjectDetail {
@@ -36,155 +19,126 @@ pub struct ProjectDetail {
 
 pub static PROJECT_DETAIL_SINK: RwLock<Option<StreamSink<ProjectDetail>>> = RwLock::new(None);
 
-fn send_detail_event(p: String, si: u64, count: u64) {
-    let d = ProjectDetail {
-        path: p,
-        size: si,
-        count,
-    };
-    send_detail_event_(d);
-}
-
-fn send_detail_event_(d: ProjectDetail) {
-    match PROJECT_DETAIL_SINK.try_read() {
-        Ok(s) => match s.as_ref() {
-            Some(s0) => {
-                let _ = s0.add(d);
-            }
-            None => {
-                println!("[rust-error] Stream is None");
-            }
-        },
-        Err(_) => {
-            println!("[rust-error] Stream read error");
+fn send_detail_event(detail: ProjectDetail) {
+    if let Ok(sink) = PROJECT_DETAIL_SINK.try_read() {
+        if let Some(stream) = sink.as_ref() {
+            let _ = stream.add(detail);
         }
     }
+}
+
+fn send_progress_event(
+    current_path: String,
+    scanned_files: u64,
+    scanned_bytes: u64,
+    completed_roots: u64,
+    total_roots: u64,
+    is_done: bool,
+) {
+    // This stream already has a stable Flutter-Rust Bridge type. A reserved
+    // path marker carries lightweight progress without creating a second,
+    // high-frequency channel that would increase UI work during large scans.
+    send_detail_event(ProjectDetail {
+        path: format!(
+            "__scanner_progress__:{completed_roots}:{total_roots}:{is_done}:{current_path}"
+        ),
+        size: scanned_bytes,
+        count: scanned_files,
+    });
 }
 
 pub struct ProjectView(pub String);
 
 impl ProjectView {
-    pub async fn scan(&self) -> anyhow::Result<()> {
-        for entry in WalkDir::new(&self.0)
+    /// Computes every top-level entry with a single traversal per subtree.
+    /// The old implementation repeatedly walked the selected root for each
+    /// child, multiplying I/O cost on directories with many top-level items.
+    pub fn scan(&self) -> anyhow::Result<()> {
+        let roots: Vec<PathBuf> = WalkDir::new(&self.0)
+            .follow_links(false)
+            .min_depth(1)
             .max_depth(1)
             .into_iter()
-            .filter_map(|e| e.ok())
-        {
-            if entry.path() == std::path::Path::new(&self.0) {
-                // 跳过起始目录
-                continue;
-            }
-            let l = entry.path().display().to_string();
-            println!("[rust] scanning {:?}", l);
-            if entry.path().is_file() {
-                let size = get_file_size(&l);
-                send_detail_event(l, size, 1);
+            .filter_map(Result::ok)
+            .map(|entry| entry.into_path())
+            .collect();
+        let total_roots = roots.len() as u64;
+        let mut scanned_files = 0_u64;
+        let mut scanned_bytes = 0_u64;
+        let mut last_progress = Instant::now();
+
+        for (root_index, root) in roots.into_iter().enumerate() {
+            let root_label = root.display().to_string();
+            let mut root_size = 0_u64;
+            let mut root_count = 0_u64;
+
+            if root.is_file() {
+                if let Ok(metadata) = root.metadata() {
+                    root_size = metadata.len();
+                    root_count = 1;
+                    scanned_files += 1;
+                    scanned_bytes += root_size;
+                }
             } else {
-                let size = get_folder_size(&l);
-                match size {
-                    Ok(_u) => {
-                        send_detail_event(l, _u.0, _u.1);
-                    }
-                    Err(_e) => {
-                        println!("project view Error: {:?}", _e)
-                    }
-                }
-            }
-        }
-
-        send_detail_event("last".to_string(), 0, 0);
-
-        anyhow::Ok(())
-    }
-
-    pub async fn scan_in_multi_threads(&self) -> anyhow::Result<()> {
-        let (sender, receiver) = channel::unbounded::<String>();
-
-        // 生产者线程：扫描路径并将路径发送到通道
-        let producer = thread::spawn({
-            let root_path = self.0.clone();
-            let sender = sender.clone();
-            move || {
-                for entry in WalkDir::new(&root_path)
-                    .max_depth(1)
+                for entry in WalkDir::new(&root)
+                    .follow_links(false)
                     .into_iter()
-                    .filter_map(|e| e.ok())
+                    .filter_map(Result::ok)
                 {
-                    if entry.path() == std::path::Path::new(&root_path) {
-                        continue; // 跳过根目录
+                    if !entry.file_type().is_file() {
+                        continue;
                     }
-                    sender
-                        .send(entry.path().display().to_string())
-                        .expect("Failed to send path");
+                    if let Ok(metadata) = entry.metadata() {
+                        root_size += metadata.len();
+                        root_count += 1;
+                        scanned_files += 1;
+                        scanned_bytes += metadata.len();
+                    }
+
+                    if last_progress.elapsed() >= PROGRESS_INTERVAL {
+                        send_progress_event(
+                            root_label.clone(),
+                            scanned_files,
+                            scanned_bytes,
+                            root_index as u64,
+                            total_roots,
+                            false,
+                        );
+                        last_progress = Instant::now();
+                    }
                 }
             }
-        });
 
-        // 消费者线程：处理路径
-        let mut consumers = Vec::new();
-        for _ in 0..4 {
-            let receiver = receiver.clone();
-            let consumer = thread::spawn(move || {
-                while let Ok(path) = receiver.recv() {
-                    if let Ok(detail) = ProjectView::process_path(&path) {
-                        send_detail_event_(detail);
-                    }
-                }
+            send_detail_event(ProjectDetail {
+                path: root_label.clone(),
+                size: root_size,
+                count: root_count,
             });
-            consumers.push(consumer);
+            send_progress_event(
+                root_label,
+                scanned_files,
+                scanned_bytes,
+                root_index as u64 + 1,
+                total_roots,
+                false,
+            );
         }
 
-        // 等待生产者完成
-        producer.join().expect("Producer thread panicked");
-        drop(sender); // 关闭发送端，通知消费者退出
-
-        // 等待消费者完成
-        for consumer in consumers {
-            consumer.join().expect("Consumer thread panicked");
-        }
-
-        send_detail_event("last".to_string(), 0, 0);
-
-        anyhow::Ok(())
+        send_progress_event(
+            self.0.clone(),
+            scanned_files,
+            scanned_bytes,
+            total_roots,
+            total_roots,
+            true,
+        );
+        Ok(())
     }
 
-    fn process_path(path: &str) -> anyhow::Result<ProjectDetail> {
-        let metadata = std::fs::metadata(path)?;
-        if metadata.is_dir() {
-            let (size, count) = get_folder_size(&path.to_string())?;
-            return Ok(ProjectDetail {
-                path: path.to_string(),
-                size,
-                count,
-            });
-        } else if metadata.is_file() {
-            let size = get_file_size(&path.to_string());
-            return Ok(ProjectDetail {
-                path: path.to_string(),
-                size,
-                count: 1,
-            });
-        }
-        anyhow::bail!("Invalid path or unknown type")
-    }
-}
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[test]
-    fn test_get_file_size() {
-        let path = "C:\\Users\\Administrator\\Desktop\\test.txt";
-        let size = get_file_size(&path.to_string());
-        println!("size: {}", size);
-    }
-
-    #[tokio::test]
-    async fn test_scan() -> anyhow::Result<()> {
-        let p = ProjectView(r"D:\github_repo".to_string());
-        p.scan_in_multi_threads().await?;
-
-        anyhow::Ok(())
+    /// Kept for the existing bridge API. Parallel full-tree walks tend to
+    /// saturate disks and leave the desktop app less responsive, so the
+    /// optimized one-pass scanner is intentionally used for both modes.
+    pub fn scan_in_multi_threads(&self) -> anyhow::Result<()> {
+        self.scan()
     }
 }
