@@ -1,14 +1,12 @@
-import 'package:animated_custom_dropdown/custom_dropdown.dart';
-import 'package:flutter_riverpod/flutter_riverpod.dart';
-import 'package:loading_indicator/loading_indicator.dart';
-import 'package:scanner/app/logger.dart';
-import 'package:scanner/app/style.dart';
-import 'package:scanner/src/rust/api/project_api.dart';
-import 'package:filesize/filesize.dart';
-import 'package:flutter/material.dart';
-import 'package:scanner/src/rust/api/tools_api.dart';
-import 'package:treemap/treemap.dart';
+import 'dart:async';
 
+import 'package:flutter/material.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:scanner/src/rust/api/project_api.dart';
+import 'package:scanner/src/rust/api/tools_api.dart';
+import 'package:scanner/src/rust/project.dart';
+
+import '../ui/app_ui.dart';
 import 'notifier.dart';
 
 class ProjectViewScreen extends ConsumerStatefulWidget {
@@ -19,139 +17,261 @@ class ProjectViewScreen extends ConsumerStatefulWidget {
 }
 
 class _ProjectViewScreenState extends ConsumerState<ProjectViewScreen> {
-  final stream = projectScanStream();
+  StreamSubscription<ProjectDetail>? _subscription;
 
   @override
   void initState() {
     super.initState();
-    stream.listen((event) {
-      logger.info("${event.path}   ${filesize(event.size)}");
-      ref.read(projectViewNotifierProvider.notifier).addDetails(event);
-    });
+    _subscription = projectScanStream().listen(
+      (event) =>
+          ref.read(projectViewNotifierProvider.notifier).handleEvent(event),
+    );
   }
-
-  final TextEditingController _controller = TextEditingController();
 
   @override
   void dispose() {
-    _controller.dispose();
+    _subscription?.cancel();
     super.dispose();
   }
-
-  List<String> sizeConditions = [
-    ">= 100 MB",
-    ">= 200 MB",
-    ">= 500 MB",
-    ">= 1 GB",
-    ">= 2 GB",
-    ">= 5 GB",
-    ">= 10 GB",
-    ">= 20 GB",
-    ">= 50 GB",
-  ];
 
   @override
   Widget build(BuildContext context) {
     final state = ref.watch(projectViewNotifierProvider);
+    final details = [...state.details]
+      ..sort((left, right) => right.size.compareTo(left.size));
+    final progress = state.totalRoots == 0
+        ? null
+        : (state.completedRoots / state.totalRoots).clamp(0.0, 1.0);
 
-    return Container(
-      padding: const EdgeInsets.all(20),
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(30, 28, 30, 24),
       child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          SizedBox(
-            height: 50,
-            child: Row(
-              children: [
-                Expanded(
-                    child: TextField(
-                  controller: _controller,
-                  enabled: false,
-                  decoration: AppStyle.inputDecorationWithHintAndLabel(
-                      "Please select a folder to scan", "Folder Path"),
-                )),
-                const SizedBox(
-                  width: 20,
+          PageHeading(
+            title: '大文件扫描',
+            subtitle: '按一级目录汇总体积，单次遍历避免重复磁盘读取',
+            trailing: FilledButton.icon(
+              onPressed: state.isScanning
+                  ? null
+                  : () => ref
+                      .read(projectViewNotifierProvider.notifier)
+                      .startScan(),
+              icon: const Icon(Icons.folder_open_outlined, size: 18),
+              label: Text(state.path.isEmpty ? '选择文件夹' : '重新扫描'),
+            ),
+          ),
+          const SizedBox(height: 20),
+          _ScanStatus(state: state, progress: progress),
+          const SizedBox(height: 20),
+          const SectionTitle(title: '空间占用排行'),
+          const SizedBox(height: 10),
+          Expanded(
+            child: details.isEmpty
+                ? EmptyState(
+                    icon: Icons.folder_open_outlined,
+                    title: state.isScanning ? '正在建立目录清单' : '还没有扫描结果',
+                    detail: state.isScanning
+                        ? '扫描完成一级目录后会逐步展示结果。'
+                        : '选择一个文件夹，查看其中最占空间的文件和文件夹。',
+                  )
+                : SurfacePanel(
+                    padding: EdgeInsets.zero,
+                    child: ListView.separated(
+                      itemCount: details.length,
+                      separatorBuilder: (_, __) =>
+                          const Divider(height: 1, color: AppColors.line),
+                      itemBuilder: (context, index) => _ResultRow(
+                        detail: details[index],
+                        maxSize: details.first.size,
+                      ),
+                    ),
+                  ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _ScanStatus extends StatelessWidget {
+  const _ScanStatus({required this.state, required this.progress});
+
+  final ProjectViewState state;
+  final double? progress;
+
+  @override
+  Widget build(BuildContext context) {
+    final ready = state.path.isNotEmpty;
+    return SurfacePanel(
+      padding: const EdgeInsets.all(18),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              Container(
+                width: 36,
+                height: 36,
+                decoration: BoxDecoration(
+                  color: state.isScanning
+                      ? AppColors.blueSoft
+                      : AppColors.greenSoft,
+                  borderRadius: BorderRadius.circular(7),
                 ),
-                ElevatedButton(
-                    onPressed: () async {
-                      ref
-                          .read(projectViewNotifierProvider.notifier)
-                          .startScan(_controller);
-                    },
-                    child: const Text("Select folder"))
+                child: Icon(
+                  state.isScanning
+                      ? Icons.radar_outlined
+                      : Icons.storage_outlined,
+                  color: state.isScanning ? AppColors.blue : AppColors.green,
+                ),
+              ),
+              const SizedBox(width: 12),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      state.isScanning
+                          ? '正在扫描'
+                          : ready
+                              ? '扫描完成'
+                              : '等待选择位置',
+                      style: const TextStyle(fontWeight: FontWeight.w700),
+                    ),
+                    const SizedBox(height: 3),
+                    Text(
+                      state.isScanning
+                          ? state.currentPath
+                          : (ready ? state.path : '未选择文件夹'),
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style:
+                          const TextStyle(color: AppColors.muted, fontSize: 12),
+                    ),
+                  ],
+                ),
+              ),
+              if (state.isScanning)
+                const StatusChip(label: '运行中', color: AppColors.amber),
+              if (state.hasCompleted)
+                const StatusChip(label: '已完成', color: AppColors.green),
+            ],
+          ),
+          if (state.isScanning) ...[
+            const SizedBox(height: 16),
+            LinearProgressIndicator(
+              value: progress,
+              minHeight: 5,
+              borderRadius: BorderRadius.circular(3),
+            ),
+          ],
+          const SizedBox(height: 15),
+          Wrap(
+            spacing: 28,
+            runSpacing: 8,
+            children: [
+              _Fact(label: '已扫描文件', value: '${state.scannedFiles}'),
+              _Fact(label: '已统计大小', value: formatBytes(state.scannedBytes)),
+              _Fact(
+                label: '完成条目',
+                value: state.totalRoots == 0
+                    ? '-'
+                    : '${state.completedRoots}/${state.totalRoots}',
+              ),
+            ],
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _Fact extends StatelessWidget {
+  const _Fact({required this.label, required this.value});
+
+  final String label;
+  final String value;
+
+  @override
+  Widget build(BuildContext context) {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Text(label,
+            style: const TextStyle(color: AppColors.muted, fontSize: 11)),
+        const SizedBox(height: 2),
+        Text(value,
+            style: const TextStyle(fontWeight: FontWeight.w700, fontSize: 14)),
+      ],
+    );
+  }
+}
+
+class _ResultRow extends StatelessWidget {
+  const _ResultRow({required this.detail, required this.maxSize});
+
+  final ProjectDetail detail;
+  final BigInt maxSize;
+
+  @override
+  Widget build(BuildContext context) {
+    final ratio = maxSize == BigInt.zero
+        ? 0.0
+        : detail.size.toDouble() / maxSize.toDouble();
+    final isFolder = detail.count > BigInt.one;
+    return Padding(
+      padding: const EdgeInsets.symmetric(horizontal: 17, vertical: 13),
+      child: Row(
+        children: [
+          Icon(
+              isFolder
+                  ? Icons.folder_outlined
+                  : Icons.insert_drive_file_outlined,
+              color: AppColors.blue),
+          const SizedBox(width: 11),
+          Expanded(
+            flex: 4,
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  detail.path,
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: const TextStyle(
+                      fontWeight: FontWeight.w600, fontSize: 13),
+                ),
+                const SizedBox(height: 7),
+                ClipRRect(
+                  borderRadius: BorderRadius.circular(3),
+                  child: LinearProgressIndicator(
+                    value: ratio.clamp(0.0, 1.0),
+                    minHeight: 4,
+                    backgroundColor: AppColors.blueSoft,
+                  ),
+                ),
               ],
             ),
           ),
-          const SizedBox(height: 10),
-          if (state.details.isNotEmpty)
-            Row(
-              children: [
-                if (!state.isDone)
-                  SizedBox(
-                    width: 50,
-                    height: 50,
-                    child: LoadingIndicator(
-                        indicatorType: Indicator.ballRotate,
-                        colors: [
-                          Colors.blue,
-                          Colors.purpleAccent,
-                          Colors.green
-                        ],
-                        strokeWidth: 2,
-                        backgroundColor: Colors.transparent,
-                        pathBackgroundColor: Colors.black),
-                  ),
-                Spacer(),
-                Material(
-                  shape: RoundedRectangleBorder(
-                      borderRadius: BorderRadius.circular(10)),
-                  elevation: 10,
-                  child: SizedBox(
-                    width: 300,
-                    height: 50,
-                    child: CustomDropdown(
-                        hintText: 'Size Condition',
-                        items: sizeConditions,
-                        onChanged: (s) {
-                          ref
-                              .read(projectViewNotifierProvider.notifier)
-                              .refreshWithSizeCondition(s);
-                        }),
-                  ),
-                )
-              ],
-            ),
-          const SizedBox(height: 10),
-          Expanded(
-            child: state.getDetails().isEmpty
-                ? SizedBox()
-                : TreeMapLayout(
-                    duration: Duration(milliseconds: 200),
-                    tile: Squarify(),
-                    children: [
-                        TreeNode.node(
-                            children: state
-                                .getDetails()
-                                .map(
-                                  (n) => TreeNode.leaf(
-                                    margin: EdgeInsets.all(5),
-                                    options: TreeNodeOptions(
-                                        child: Text(
-                                          "${n.path}(${filesize(n.size)})",
-                                          style: TextStyle(color: Colors.white),
-                                        ),
-                                        onTap: () {
-                                          print(n.path);
-                                          openFolder(s: n.path);
-                                        },
-                                        color: Colors.primaries[n.size.toInt() %
-                                            Colors.primaries.length]),
-                                    value: n.size.toInt(),
-                                  ),
-                                )
-                                .toList())
-                      ]),
-          )
+          const SizedBox(width: 18),
+          SizedBox(
+            width: 88,
+            child: Text(formatBytes(detail.size),
+                textAlign: TextAlign.right,
+                style: const TextStyle(fontWeight: FontWeight.w700)),
+          ),
+          const SizedBox(width: 22),
+          SizedBox(
+            width: 76,
+            child: Text('${detail.count} 个文件',
+                style: const TextStyle(color: AppColors.muted, fontSize: 12)),
+          ),
+          IconButton(
+            tooltip: '打开位置',
+            onPressed: () => openFolder(s: detail.path),
+            icon: const Icon(Icons.open_in_new_outlined, size: 19),
+          ),
         ],
       ),
     );

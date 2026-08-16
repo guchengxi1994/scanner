@@ -45,8 +45,9 @@ class AppStyle {
 
   static InputDecoration inputDecorationWithHintAndLabel(
       String hint, String label,
-      {double fontSize = 12}) {
+      {double fontSize = 12, Widget? suffix}) {
     return InputDecoration(
+        suffixIcon: suffix,
         hintText: hint,
         errorStyle: const TextStyle(height: 0),
         labelText: label,

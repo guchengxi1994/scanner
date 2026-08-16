@@ -3,6 +3,7 @@
 
 // ignore_for_file: unused_import, unused_element, unnecessary_import, duplicate_ignore, invalid_use_of_internal_member, annotate_overrides, non_constant_identifier_names, curly_braces_in_flow_control_structures, prefer_const_literals_to_create_immutables, unused_field
 
+import 'api/hybrid_search_api.dart';
 import 'api/project_api.dart';
 import 'api/public.dart';
 import 'api/scanner_api.dart';
@@ -13,6 +14,7 @@ import 'dart:convert';
 import 'frb_generated.dart';
 import 'frb_generated.io.dart'
     if (dart.library.js_interop) 'frb_generated.web.dart';
+import 'hybrid_search.dart';
 import 'package:flutter_rust_bridge/flutter_rust_bridge_for_generated.dart';
 import 'project.dart';
 import 'scanner/compare_result.dart';
@@ -76,7 +78,7 @@ class RustLib extends BaseEntrypoint<RustLibApi, RustLibApiImpl, RustLibWire> {
   String get codegenVersion => '2.5.1';
 
   @override
-  int get rustContentHash => -934338019;
+  int get rustContentHash => -715707928;
 
   static const kDefaultExternalLibraryLoaderConfig =
       ExternalLibraryLoaderConfig(
@@ -87,7 +89,31 @@ class RustLib extends BaseEntrypoint<RustLibApi, RustLibApiImpl, RustLibWire> {
 }
 
 abstract class RustLibApi extends BaseApi {
+  Future<void> crateApiHybridSearchApiHybridSearchStream(
+      {required String p,
+      required bool caseSensitive,
+      required List<String> startsWith,
+      required List<String> endsWith,
+      required List<String> includes,
+      required List<String> excludes,
+      required List<String> regex,
+      required SearchType searchType});
+
+  Future<List<String>> crateApiHybridSearchApiHybridSearchSync(
+      {required String p,
+      required bool caseSensitive,
+      required List<String> startsWith,
+      required List<String> endsWith,
+      required List<String> includes,
+      required List<String> excludes,
+      required List<String> regex,
+      required SearchType searchType});
+
+  Stream<HybridSearchDetail> crateApiHybridSearchApiSearchStream();
+
   Future<void> crateApiProjectApiProjectScan({required String p});
+
+  Future<void> crateApiProjectApiProjectScanReallyFast({required String p});
 
   Stream<ProjectDetail> crateApiProjectApiProjectScanStream();
 
@@ -123,13 +149,155 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
   });
 
   @override
+  Future<void> crateApiHybridSearchApiHybridSearchStream(
+      {required String p,
+      required bool caseSensitive,
+      required List<String> startsWith,
+      required List<String> endsWith,
+      required List<String> includes,
+      required List<String> excludes,
+      required List<String> regex,
+      required SearchType searchType}) {
+    return handler.executeNormal(NormalTask(
+      callFfi: (port_) {
+        final serializer = SseSerializer(generalizedFrbRustBinding);
+        sse_encode_String(p, serializer);
+        sse_encode_bool(caseSensitive, serializer);
+        sse_encode_list_String(startsWith, serializer);
+        sse_encode_list_String(endsWith, serializer);
+        sse_encode_list_String(includes, serializer);
+        sse_encode_list_String(excludes, serializer);
+        sse_encode_list_String(regex, serializer);
+        sse_encode_search_type(searchType, serializer);
+        pdeCallFfi(generalizedFrbRustBinding, serializer,
+            funcId: 1, port: port_);
+      },
+      codec: SseCodec(
+        decodeSuccessData: sse_decode_unit,
+        decodeErrorData: null,
+      ),
+      constMeta: kCrateApiHybridSearchApiHybridSearchStreamConstMeta,
+      argValues: [
+        p,
+        caseSensitive,
+        startsWith,
+        endsWith,
+        includes,
+        excludes,
+        regex,
+        searchType
+      ],
+      apiImpl: this,
+    ));
+  }
+
+  TaskConstMeta get kCrateApiHybridSearchApiHybridSearchStreamConstMeta =>
+      const TaskConstMeta(
+        debugName: "hybrid_search_stream",
+        argNames: [
+          "p",
+          "caseSensitive",
+          "startsWith",
+          "endsWith",
+          "includes",
+          "excludes",
+          "regex",
+          "searchType"
+        ],
+      );
+
+  @override
+  Future<List<String>> crateApiHybridSearchApiHybridSearchSync(
+      {required String p,
+      required bool caseSensitive,
+      required List<String> startsWith,
+      required List<String> endsWith,
+      required List<String> includes,
+      required List<String> excludes,
+      required List<String> regex,
+      required SearchType searchType}) {
+    return handler.executeNormal(NormalTask(
+      callFfi: (port_) {
+        final serializer = SseSerializer(generalizedFrbRustBinding);
+        sse_encode_String(p, serializer);
+        sse_encode_bool(caseSensitive, serializer);
+        sse_encode_list_String(startsWith, serializer);
+        sse_encode_list_String(endsWith, serializer);
+        sse_encode_list_String(includes, serializer);
+        sse_encode_list_String(excludes, serializer);
+        sse_encode_list_String(regex, serializer);
+        sse_encode_search_type(searchType, serializer);
+        pdeCallFfi(generalizedFrbRustBinding, serializer,
+            funcId: 2, port: port_);
+      },
+      codec: SseCodec(
+        decodeSuccessData: sse_decode_list_String,
+        decodeErrorData: null,
+      ),
+      constMeta: kCrateApiHybridSearchApiHybridSearchSyncConstMeta,
+      argValues: [
+        p,
+        caseSensitive,
+        startsWith,
+        endsWith,
+        includes,
+        excludes,
+        regex,
+        searchType
+      ],
+      apiImpl: this,
+    ));
+  }
+
+  TaskConstMeta get kCrateApiHybridSearchApiHybridSearchSyncConstMeta =>
+      const TaskConstMeta(
+        debugName: "hybrid_search_sync",
+        argNames: [
+          "p",
+          "caseSensitive",
+          "startsWith",
+          "endsWith",
+          "includes",
+          "excludes",
+          "regex",
+          "searchType"
+        ],
+      );
+
+  @override
+  Stream<HybridSearchDetail> crateApiHybridSearchApiSearchStream() {
+    final s = RustStreamSink<HybridSearchDetail>();
+    handler.executeSync(SyncTask(
+      callFfi: () {
+        final serializer = SseSerializer(generalizedFrbRustBinding);
+        sse_encode_StreamSink_hybrid_search_detail_Sse(s, serializer);
+        return pdeCallFfi(generalizedFrbRustBinding, serializer, funcId: 3)!;
+      },
+      codec: SseCodec(
+        decodeSuccessData: sse_decode_unit,
+        decodeErrorData: sse_decode_AnyhowException,
+      ),
+      constMeta: kCrateApiHybridSearchApiSearchStreamConstMeta,
+      argValues: [s],
+      apiImpl: this,
+    ));
+    return s.stream;
+  }
+
+  TaskConstMeta get kCrateApiHybridSearchApiSearchStreamConstMeta =>
+      const TaskConstMeta(
+        debugName: "search_stream",
+        argNames: ["s"],
+      );
+
+  @override
   Future<void> crateApiProjectApiProjectScan({required String p}) {
     return handler.executeNormal(NormalTask(
       callFfi: (port_) {
         final serializer = SseSerializer(generalizedFrbRustBinding);
         sse_encode_String(p, serializer);
         pdeCallFfi(generalizedFrbRustBinding, serializer,
-            funcId: 1, port: port_);
+            funcId: 4, port: port_);
       },
       codec: SseCodec(
         decodeSuccessData: sse_decode_unit,
@@ -148,13 +316,38 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
       );
 
   @override
+  Future<void> crateApiProjectApiProjectScanReallyFast({required String p}) {
+    return handler.executeNormal(NormalTask(
+      callFfi: (port_) {
+        final serializer = SseSerializer(generalizedFrbRustBinding);
+        sse_encode_String(p, serializer);
+        pdeCallFfi(generalizedFrbRustBinding, serializer,
+            funcId: 5, port: port_);
+      },
+      codec: SseCodec(
+        decodeSuccessData: sse_decode_unit,
+        decodeErrorData: null,
+      ),
+      constMeta: kCrateApiProjectApiProjectScanReallyFastConstMeta,
+      argValues: [p],
+      apiImpl: this,
+    ));
+  }
+
+  TaskConstMeta get kCrateApiProjectApiProjectScanReallyFastConstMeta =>
+      const TaskConstMeta(
+        debugName: "project_scan_really_fast",
+        argNames: ["p"],
+      );
+
+  @override
   Stream<ProjectDetail> crateApiProjectApiProjectScanStream() {
     final s = RustStreamSink<ProjectDetail>();
     handler.executeSync(SyncTask(
       callFfi: () {
         final serializer = SseSerializer(generalizedFrbRustBinding);
         sse_encode_StreamSink_project_detail_Sse(s, serializer);
-        return pdeCallFfi(generalizedFrbRustBinding, serializer, funcId: 2)!;
+        return pdeCallFfi(generalizedFrbRustBinding, serializer, funcId: 6)!;
       },
       codec: SseCodec(
         decodeSuccessData: sse_decode_unit,
@@ -179,7 +372,7 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
       callFfi: (port_) {
         final serializer = SseSerializer(generalizedFrbRustBinding);
         pdeCallFfi(generalizedFrbRustBinding, serializer,
-            funcId: 3, port: port_);
+            funcId: 7, port: port_);
       },
       codec: SseCodec(
         decodeSuccessData: sse_decode_operation_result,
@@ -203,7 +396,7 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
       callFfi: (port_) {
         final serializer = SseSerializer(generalizedFrbRustBinding);
         pdeCallFfi(generalizedFrbRustBinding, serializer,
-            funcId: 4, port: port_);
+            funcId: 8, port: port_);
       },
       codec: SseCodec(
         decodeSuccessData: sse_decode_operation_result,
@@ -228,7 +421,7 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
       callFfi: () {
         final serializer = SseSerializer(generalizedFrbRustBinding);
         sse_encode_StreamSink_res_event_Sse(s, serializer);
-        return pdeCallFfi(generalizedFrbRustBinding, serializer, funcId: 5)!;
+        return pdeCallFfi(generalizedFrbRustBinding, serializer, funcId: 9)!;
       },
       codec: SseCodec(
         decodeSuccessData: sse_decode_unit,
@@ -253,7 +446,7 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
       callFfi: () {
         final serializer = SseSerializer(generalizedFrbRustBinding);
         sse_encode_box_autoadd_res_event(s, serializer);
-        return pdeCallFfi(generalizedFrbRustBinding, serializer, funcId: 6)!;
+        return pdeCallFfi(generalizedFrbRustBinding, serializer, funcId: 10)!;
       },
       codec: SseCodec(
         decodeSuccessData: sse_decode_String,
@@ -278,7 +471,7 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
         final serializer = SseSerializer(generalizedFrbRustBinding);
         sse_encode_String(p, serializer);
         pdeCallFfi(generalizedFrbRustBinding, serializer,
-            funcId: 7, port: port_);
+            funcId: 11, port: port_);
       },
       codec: SseCodec(
         decodeSuccessData: sse_decode_unit,
@@ -302,7 +495,7 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
       callFfi: () {
         final serializer = SseSerializer(generalizedFrbRustBinding);
         sse_encode_StreamSink_compare_result_Sse(s, serializer);
-        return pdeCallFfi(generalizedFrbRustBinding, serializer, funcId: 8)!;
+        return pdeCallFfi(generalizedFrbRustBinding, serializer, funcId: 12)!;
       },
       codec: SseCodec(
         decodeSuccessData: sse_decode_unit,
@@ -327,7 +520,7 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
       callFfi: () {
         final serializer = SseSerializer(generalizedFrbRustBinding);
         sse_encode_String(name, serializer);
-        return pdeCallFfi(generalizedFrbRustBinding, serializer, funcId: 9)!;
+        return pdeCallFfi(generalizedFrbRustBinding, serializer, funcId: 13)!;
       },
       codec: SseCodec(
         decodeSuccessData: sse_decode_String,
@@ -350,7 +543,7 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
       callFfi: (port_) {
         final serializer = SseSerializer(generalizedFrbRustBinding);
         pdeCallFfi(generalizedFrbRustBinding, serializer,
-            funcId: 10, port: port_);
+            funcId: 14, port: port_);
       },
       codec: SseCodec(
         decodeSuccessData: sse_decode_unit,
@@ -374,7 +567,7 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
         final serializer = SseSerializer(generalizedFrbRustBinding);
         sse_encode_String(s, serializer);
         pdeCallFfi(generalizedFrbRustBinding, serializer,
-            funcId: 11, port: port_);
+            funcId: 15, port: port_);
       },
       codec: SseCodec(
         decodeSuccessData: sse_decode_unit,
@@ -398,7 +591,7 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
         final serializer = SseSerializer(generalizedFrbRustBinding);
         sse_encode_String(s, serializer);
         pdeCallFfi(generalizedFrbRustBinding, serializer,
-            funcId: 12, port: port_);
+            funcId: 16, port: port_);
       },
       codec: SseCodec(
         decodeSuccessData: sse_decode_unit,
@@ -422,7 +615,7 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
         final serializer = SseSerializer(generalizedFrbRustBinding);
         sse_encode_String(s, serializer);
         pdeCallFfi(generalizedFrbRustBinding, serializer,
-            funcId: 13, port: port_);
+            funcId: 17, port: port_);
       },
       codec: SseCodec(
         decodeSuccessData: sse_decode_operation_result,
@@ -448,6 +641,13 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
   @protected
   RustStreamSink<CompareResult> dco_decode_StreamSink_compare_result_Sse(
       dynamic raw) {
+    // Codec=Dco (DartCObject based), see doc to use other codecs
+    throw UnimplementedError();
+  }
+
+  @protected
+  RustStreamSink<HybridSearchDetail>
+      dco_decode_StreamSink_hybrid_search_detail_Sse(dynamic raw) {
     // Codec=Dco (DartCObject based), see doc to use other codecs
     throw UnimplementedError();
   }
@@ -559,6 +759,31 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
   }
 
   @protected
+  HybridSearchDetail dco_decode_hybrid_search_detail(dynamic raw) {
+    // Codec=Dco (DartCObject based), see doc to use other codecs
+    final arr = raw as List<dynamic>;
+    if (arr.length != 3)
+      throw Exception('unexpected arr length: expect 3 but see ${arr.length}');
+    return HybridSearchDetail(
+      path: dco_decode_String(arr[0]),
+      createdEpoch: dco_decode_u_64(arr[1]),
+      modifiedEpoch: dco_decode_u_64(arr[2]),
+    );
+  }
+
+  @protected
+  int dco_decode_i_32(dynamic raw) {
+    // Codec=Dco (DartCObject based), see doc to use other codecs
+    return raw as int;
+  }
+
+  @protected
+  List<String> dco_decode_list_String(dynamic raw) {
+    // Codec=Dco (DartCObject based), see doc to use other codecs
+    return (raw as List<dynamic>).map(dco_decode_String).toList();
+  }
+
+  @protected
   List<File> dco_decode_list_file(dynamic raw) {
     // Codec=Dco (DartCObject based), see doc to use other codecs
     return (raw as List<dynamic>).map(dco_decode_file).toList();
@@ -636,6 +861,12 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
   }
 
   @protected
+  SearchType dco_decode_search_type(dynamic raw) {
+    // Codec=Dco (DartCObject based), see doc to use other codecs
+    return SearchType.values[raw as int];
+  }
+
+  @protected
   BigInt dco_decode_u_64(dynamic raw) {
     // Codec=Dco (DartCObject based), see doc to use other codecs
     return dcoDecodeU64(raw);
@@ -663,6 +894,14 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
   @protected
   RustStreamSink<CompareResult> sse_decode_StreamSink_compare_result_Sse(
       SseDeserializer deserializer) {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+    throw UnimplementedError('Unreachable ()');
+  }
+
+  @protected
+  RustStreamSink<HybridSearchDetail>
+      sse_decode_StreamSink_hybrid_search_detail_Sse(
+          SseDeserializer deserializer) {
     // Codec=Sse (Serialization based), see doc to use other codecs
     throw UnimplementedError('Unreachable ()');
   }
@@ -766,6 +1005,37 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
   }
 
   @protected
+  HybridSearchDetail sse_decode_hybrid_search_detail(
+      SseDeserializer deserializer) {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+    var var_path = sse_decode_String(deserializer);
+    var var_createdEpoch = sse_decode_u_64(deserializer);
+    var var_modifiedEpoch = sse_decode_u_64(deserializer);
+    return HybridSearchDetail(
+        path: var_path,
+        createdEpoch: var_createdEpoch,
+        modifiedEpoch: var_modifiedEpoch);
+  }
+
+  @protected
+  int sse_decode_i_32(SseDeserializer deserializer) {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+    return deserializer.buffer.getInt32();
+  }
+
+  @protected
+  List<String> sse_decode_list_String(SseDeserializer deserializer) {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+
+    var len_ = sse_decode_i_32(deserializer);
+    var ans_ = <String>[];
+    for (var idx_ = 0; idx_ < len_; ++idx_) {
+      ans_.add(sse_decode_String(deserializer));
+    }
+    return ans_;
+  }
+
+  @protected
   List<File> sse_decode_list_file(SseDeserializer deserializer) {
     // Codec=Sse (Serialization based), see doc to use other codecs
 
@@ -844,6 +1114,13 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
   }
 
   @protected
+  SearchType sse_decode_search_type(SseDeserializer deserializer) {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+    var inner = sse_decode_i_32(deserializer);
+    return SearchType.values[inner];
+  }
+
+  @protected
   BigInt sse_decode_u_64(SseDeserializer deserializer) {
     // Codec=Sse (Serialization based), see doc to use other codecs
     return deserializer.buffer.getBigUint64();
@@ -861,12 +1138,6 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
   }
 
   @protected
-  int sse_decode_i_32(SseDeserializer deserializer) {
-    // Codec=Sse (Serialization based), see doc to use other codecs
-    return deserializer.buffer.getInt32();
-  }
-
-  @protected
   void sse_encode_AnyhowException(
       AnyhowException self, SseSerializer serializer) {
     // Codec=Sse (Serialization based), see doc to use other codecs
@@ -881,6 +1152,19 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
         self.setupAndSerialize(
             codec: SseCodec(
           decodeSuccessData: sse_decode_compare_result,
+          decodeErrorData: sse_decode_AnyhowException,
+        )),
+        serializer);
+  }
+
+  @protected
+  void sse_encode_StreamSink_hybrid_search_detail_Sse(
+      RustStreamSink<HybridSearchDetail> self, SseSerializer serializer) {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+    sse_encode_String(
+        self.setupAndSerialize(
+            codec: SseCodec(
+          decodeSuccessData: sse_decode_hybrid_search_detail,
           decodeErrorData: sse_decode_AnyhowException,
         )),
         serializer);
@@ -990,6 +1274,30 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
   }
 
   @protected
+  void sse_encode_hybrid_search_detail(
+      HybridSearchDetail self, SseSerializer serializer) {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+    sse_encode_String(self.path, serializer);
+    sse_encode_u_64(self.createdEpoch, serializer);
+    sse_encode_u_64(self.modifiedEpoch, serializer);
+  }
+
+  @protected
+  void sse_encode_i_32(int self, SseSerializer serializer) {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+    serializer.buffer.putInt32(self);
+  }
+
+  @protected
+  void sse_encode_list_String(List<String> self, SseSerializer serializer) {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+    sse_encode_i_32(self.length, serializer);
+    for (final item in self) {
+      sse_encode_String(item, serializer);
+    }
+  }
+
+  @protected
   void sse_encode_list_file(List<File> self, SseSerializer serializer) {
     // Codec=Sse (Serialization based), see doc to use other codecs
     sse_encode_i_32(self.length, serializer);
@@ -1059,6 +1367,12 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
   }
 
   @protected
+  void sse_encode_search_type(SearchType self, SseSerializer serializer) {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+    sse_encode_i_32(self.index, serializer);
+  }
+
+  @protected
   void sse_encode_u_64(BigInt self, SseSerializer serializer) {
     // Codec=Sse (Serialization based), see doc to use other codecs
     serializer.buffer.putBigUint64(self);
@@ -1073,11 +1387,5 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
   @protected
   void sse_encode_unit(void self, SseSerializer serializer) {
     // Codec=Sse (Serialization based), see doc to use other codecs
-  }
-
-  @protected
-  void sse_encode_i_32(int self, SseSerializer serializer) {
-    // Codec=Sse (Serialization based), see doc to use other codecs
-    serializer.buffer.putInt32(self);
   }
 }

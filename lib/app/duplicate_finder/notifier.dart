@@ -6,6 +6,9 @@ import 'package:file_selector/file_selector.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import 'notifier_state.dart';
+import '../history/scan_history.dart';
+import '../settings/scan_exclusions.dart';
+import '../settings/scan_rule_runtime.dart';
 
 class ScannerNotifier extends Notifier<ScannerState> {
   @override
@@ -15,35 +18,69 @@ class ScannerNotifier extends Notifier<ScannerState> {
 
   double get progress => state.totalFileCount == 0
       ? 0
-      : state.comparedFileCount / state.totalFileCount;
+      : state.totalCandidateCount > 0
+          ? state.matchedCandidateCount / state.totalCandidateCount
+          : 0;
 
-  refresh() {
+  void refresh() {
     state = state.copyWith(
         compareResults: [],
         stage: "",
         path: "",
         scanning: false,
         totalFileCount: 0,
-        comparedFileCount: 0);
+        comparedFileCount: 0,
+        matchedCandidateCount: 0,
+        totalCandidateCount: 0);
   }
 
-  done() {
+  void done() {
     state = state.copyWith(scanning: false);
+    _completeHistory();
   }
 
-  startScan() async {
+  void _completeHistory() {
+    if (state.historyId != null) {
+      final reclaimable = state.results.fold<BigInt>(
+        BigInt.zero,
+        (sum, result) => sum + result.fileSize * (result.count - BigInt.one),
+      );
+      ref.read(scanHistoryProvider.notifier).complete(
+            state.historyId!,
+            fileCount: state.totalFileCount,
+            bytes: reclaimable,
+            resultCount: state.results.length,
+          );
+    }
+  }
+
+  Future<void> startScan() async {
+    if (state.scanning) return;
     refresh();
     final String? directoryPath = await getDirectoryPath();
     if (directoryPath == null) {
       return;
     }
+    final exclusions =
+        await ref.read(scanExclusionsProvider.notifier).ensureLoaded();
+    await syncScanExclusions(
+        exclusions.map((rule) => rule.backendValue).toList());
 
+    final historyId = ref.read(scanHistoryProvider.notifier).start(
+          ScanHistoryKind.duplicates,
+          directoryPath,
+        );
     state = state.copyWith(
-        path: directoryPath, scanning: true, compareResults: [], results: []);
+      path: directoryPath,
+      scanning: true,
+      compareResults: [],
+      results: [],
+      historyId: historyId,
+    );
     scan(p: directoryPath);
   }
 
-  changeAsc() {
+  void changeAsc() {
     bool b = !state.asc;
     if (b) {
       state = state.copyWith(
@@ -58,13 +95,13 @@ class ScannerNotifier extends Notifier<ScannerState> {
     }
   }
 
-  refreshList() {
+  void refreshList() {
     state = state.copyWith(
         asc: true,
         results: state.results..sort((a, b) => a.index.compareTo(b.index)));
   }
 
-  changeShowAll() {
+  void changeShowAll() {
     bool b = !state.showAll;
 
     if (b) {
@@ -84,34 +121,44 @@ class ScannerNotifier extends Notifier<ScannerState> {
     }
   }
 
-  changeStage(ResEvent s) {
-    final v = switch (s) {
-      ResEvent_ScannerEvent() => eventToString(s: s),
-      ResEvent_CompareEvent() => "${state.stage};${eventToString(s: s)}",
-      ResEvent_DoneEvent() => "Done",
-    };
-
+  void changeStage(ResEvent s) {
     if (s is ResEvent_ScannerEvent) {
-      state = state.copyWith(totalFileCount: s.field0.count.toInt());
-    }
-
-    if (v == "Done") {
+      if (s.field0.eventType.startsWith('__duplicate_match_progress__:')) {
+        final pieces = s.field0.eventType.split(':');
+        if (pieces.length == 3) {
+          state = state.copyWith(
+            stage: '正在验证候选文件',
+            matchedCandidateCount:
+                int.tryParse(pieces[1]) ?? state.matchedCandidateCount,
+            totalCandidateCount:
+                int.tryParse(pieces[2]) ?? state.totalCandidateCount,
+          );
+        }
+        return;
+      }
+      state = state.copyWith(
+        totalFileCount: s.field0.count.toInt(),
+        stage: s.field0.eventType,
+      );
+    } else if (s is ResEvent_CompareEvent) {
+      state = state.copyWith(stage: '正在验证文件内容');
+    } else if (s is ResEvent_DoneEvent) {
       done();
-    } else {
-      state = state.copyWith(stage: v);
     }
   }
 
-  addItem(CompareResult result) {
+  void addItem(CompareResult result) {
+    final nextResults = [...state.compareResults, result];
     state = state.copyWith(
-        compareResults: [...state.compareResults, result],
-        results: [...state.compareResults, result],
+        compareResults: nextResults,
+        results: nextResults,
         showAll: true,
         asc: true,
         comparedFileCount: state.comparedFileCount + result.count.toInt());
+    if (!state.scanning) _completeHistory();
   }
 
-  updateCompareResult(CompareResult result) {
+  void updateCompareResult(CompareResult result) {
     state = state.copyWith(
         compareResults: state.compareResults
             .map((e) => e.index == result.index ? result : e)
@@ -121,7 +168,7 @@ class ScannerNotifier extends Notifier<ScannerState> {
             .toList());
   }
 
-  removeFileFromList(BigInt resultId, File s) {
+  void removeFileFromList(BigInt resultId, File s) {
     final result = state.compareResults.firstWhere((e) => e.index == resultId);
 
     final c = CompareResult(

@@ -30,10 +30,9 @@ pub fn open_folder_and_highlight_file(file_path: &str) {
     }
 }
 
-
 pub fn open_folder(file_path: &str) {
     let path = Path::new(file_path);
-    if path.is_dir(){
+    if path.is_dir() {
         if cfg!(target_os = "windows") {
             Command::new("explorer")
                 .arg(file_path)

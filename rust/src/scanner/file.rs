@@ -1,18 +1,19 @@
-use std::collections::HashMap;
-use std::ffi::OsStr;
-use std::hash::DefaultHasher;
-use std::hash::Hash;
-use std::hash::Hasher;
-use std::sync::RwLock;
+use std::{
+    collections::HashMap,
+    ffi::OsStr,
+    fs::File as StdFile,
+    io::{Read, Seek, SeekFrom},
+    sync::RwLock,
+};
 
-use levenshtein::levenshtein;
 use once_cell::sync::Lazy;
-use serde::Deserialize;
-use serde::Serialize;
-use sha2::Digest;
-use sha2::Sha256;
+use serde::{Deserialize, Serialize};
+use sha2::{Digest, Sha256};
 
 use super::difference::Difference;
+
+pub const SAMPLE_SIZE: usize = 64 * 1024;
+const HASH_BUFFER_SIZE: usize = 1024 * 1024;
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct File {
@@ -21,156 +22,97 @@ pub struct File {
     pub size: u64,
 }
 
-impl Hash for File {
-    fn hash<H: std::hash::Hasher>(&self, state: &mut H) {
-        self.size.hash(state);
-    }
-}
-
 impl File {
-    pub fn default_hash(&self) -> u64 {
-        let mut hasher = DefaultHasher::new();
-        self.hash(&mut hasher);
-        hasher.finish()
-    }
-
-    pub fn from_path(s: String) -> anyhow::Result<Self> {
-        let path = std::path::Path::new(&s);
-        let name = path
+    pub fn from_path(path: String) -> anyhow::Result<Self> {
+        let path_ref = std::path::Path::new(&path);
+        let name = path_ref
             .file_name()
             .unwrap_or(OsStr::new(""))
-            .to_str()
-            .unwrap_or("")
+            .to_string_lossy()
             .to_string();
-        if name == "" {
-            anyhow::bail!("Invalid path")
+
+        if name.is_empty() {
+            anyhow::bail!("Invalid file path")
         }
 
-        let size = path.metadata()?.len();
-        anyhow::Ok(File {
-            path: s,
+        Ok(Self {
+            size: path_ref.metadata()?.len(),
+            path,
             name,
-            size,
         })
     }
 
+    /// A small deterministic fingerprint filters most same-sized candidates
+    /// before the expensive complete SHA-256 pass.
     pub fn get_file_hash(&self) -> anyhow::Result<String> {
-        if self.size == 0 {
-            return Ok("".to_string());
+        let mut file = StdFile::open(&self.path)?;
+        let mut hasher = Sha256::new();
+        hasher.update(self.size.to_le_bytes());
+
+        let mut buffer = vec![0_u8; SAMPLE_SIZE];
+        let first_read = file.read(&mut buffer)?;
+        hasher.update(&buffer[..first_read]);
+
+        if self.size > SAMPLE_SIZE as u64 {
+            file.seek(SeekFrom::Start(
+                self.size.saturating_sub(SAMPLE_SIZE as u64),
+            ))?;
+            let last_read = file.read(&mut buffer)?;
+            hasher.update(&buffer[..last_read]);
         }
 
-        let mut buffer = vec![0; 1024];
-        let mut file = std::fs::File::open(&self.path)?;
-        let _ = std::io::Read::read(&mut file, &mut buffer)?;
-        // buffer.truncate(bytes_read);
-        let mut hasher = Sha256::new();
-        hasher.update(&buffer);
-        let result = hasher.finalize();
-        anyhow::Ok(format!("{:x}", result))
+        Ok(format!("{:x}", hasher.finalize()))
     }
 
     pub fn get_full_hash(&self) -> anyhow::Result<String> {
-        if self.size == 0 {
-            return Ok("".to_string());
-        }
-
-        let mut buffer = vec![0; 1024 * 1024];
-        let mut file = std::fs::File::open(&self.path)?;
+        let mut file = StdFile::open(&self.path)?;
+        let mut buffer = vec![0_u8; HASH_BUFFER_SIZE];
         let mut hasher = Sha256::new();
 
         loop {
-            // 读取文件中的一块内容
-            let bytes_read = std::io::Read::read(&mut file, &mut buffer)?;
+            let bytes_read = file.read(&mut buffer)?;
             if bytes_read == 0 {
-                break; // 文件读取完毕
+                break;
             }
-
-            // 将读取的内容写入哈希计算器
             hasher.update(&buffer[..bytes_read]);
         }
 
-        // 计算最终的哈希值
-        let result = hasher.finalize();
-
-        // 将哈希值转换为十六进制字符串
-        let hash_string = format!("{:x}", result);
-
-        Ok(hash_string)
+        Ok(format!("{:x}", hasher.finalize()))
     }
 
-    pub fn compare_hash(&self, other: &File) -> bool {
-        let self_simple_hash =
-            self.get_or_insert_hash(&GLOBAL_FILE_HASH, |file| file.get_file_hash());
-        let other_simple_hash =
-            other.get_or_insert_hash(&GLOBAL_FILE_HASH, |file| file.get_file_hash());
+    pub fn compare_hash(&self, other: &Self) -> bool {
+        self.get_file_hash().ok() == other.get_file_hash().ok()
+            && self.get_full_hash().ok() == other.get_full_hash().ok()
+    }
 
-        if self_simple_hash != other_simple_hash {
-            return false;
+    pub fn fuzzy_compare(&self, other: &Self) -> Difference {
+        let max_value = std::cmp::max(self.name.len(), other.name.len());
+        if max_value == 0 {
+            return Difference {
+                distance: 0,
+                similarity: 1.0,
+            };
         }
 
-        let self_full_hash =
-            self.get_or_insert_hash(&GLOBAL_FILE_FULL_HASH, |file| file.get_full_hash());
-        let other_full_hash =
-            other.get_or_insert_hash(&GLOBAL_FILE_FULL_HASH, |file| file.get_full_hash());
-
-        self_full_hash == other_full_hash
-    }
-
-    fn get_or_insert_hash<F>(&self, map: &RwLock<HashMap<String, String>>, hash_fn: F) -> String
-    where
-        F: Fn(&File) -> anyhow::Result<String>,
-    {
-        let key = self.path.clone();
-        let mut binding = map.write().unwrap();
-        binding
-            .entry(key.clone())
-            .or_insert_with(|| hash_fn(self).unwrap_or_default())
-            .clone()
-    }
-
-    pub fn fuzzy_compare(&self, other: &File) -> Difference {
-        let max_value = std::cmp::max(self.name.len(), other.name.len());
-        let distance = levenshtein(&self.name, &other.name);
-        let similarity = 1.0 - (distance as f64 / max_value as f64);
-
+        let distance = levenshtein::levenshtein(&self.name, &other.name);
         Difference {
             distance,
-            similarity,
+            similarity: 1.0 - (distance as f64 / max_value as f64),
         }
     }
 }
 
-impl Eq for File {}
-
-impl PartialEq for File {
-    fn eq(&self, other: &Self) -> bool {
-        if self.size == 0 && other.size == 0 {
-            return true;
-        }
-
-        if self.size != other.size {
-            return false;
-        }
-
-        self.compare_hash(other)
-    }
-}
-
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Default)]
 pub struct FileSet(pub HashMap<u64, Vec<File>>);
 
 impl FileSet {
     pub fn new() -> Self {
-        FileSet(HashMap::new())
+        Self::default()
     }
 
     pub fn update_list(&mut self, files: Vec<File>) {
         for file in files {
-            if self.0.contains_key(&file.size) {
-                self.0.get_mut(&file.size).unwrap().push(file);
-            } else {
-                self.0.insert(file.size, vec![file]);
-            }
+            self.0.entry(file.size).or_default().push(file);
         }
     }
 
@@ -180,9 +122,3 @@ impl FileSet {
 }
 
 pub static GLOBAL_FILESET: Lazy<RwLock<FileSet>> = Lazy::new(|| RwLock::new(FileSet::new()));
-
-pub static GLOBAL_FILE_HASH: Lazy<RwLock<HashMap<String, String>>> =
-    Lazy::new(|| RwLock::new(HashMap::new()));
-
-pub static GLOBAL_FILE_FULL_HASH: Lazy<RwLock<HashMap<String, String>>> =
-    Lazy::new(|| RwLock::new(HashMap::new()));

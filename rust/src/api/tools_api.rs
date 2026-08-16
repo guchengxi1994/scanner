@@ -1,5 +1,6 @@
 use crate::tools::{
-    self, move_file_to_trash::move_file_to_trash, openfile_and_highlight::open_folder_and_highlight_file
+    self, move_file_to_trash::move_file_to_trash,
+    openfile_and_highlight::open_folder_and_highlight_file,
 };
 
 use super::public::OperationResult;

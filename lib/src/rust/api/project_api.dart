@@ -12,3 +12,6 @@ Stream<ProjectDetail> projectScanStream() =>
 
 Future<void> projectScan({required String p}) =>
     RustLib.instance.api.crateApiProjectApiProjectScan(p: p);
+
+Future<void> projectScanReallyFast({required String p}) =>
+    RustLib.instance.api.crateApiProjectApiProjectScanReallyFast(p: p);

@@ -42,7 +42,7 @@ class SidebarItemWidget extends ConsumerWidget {
                   borderRadius: BorderRadius.circular(4),
                   color: state.index == item.index
                       ? Colors.grey[100]
-                      : Colors.white,
+                      : Colors.transparent,
                 ),
                 width: state.width - 10,
                 height: 30,

@@ -14,6 +14,9 @@ class ScannerState {
   final bool asc;
   final bool scanning;
   final int comparedFileCount;
+  final int matchedCandidateCount;
+  final int totalCandidateCount;
+  final String? historyId;
 
   const ScannerState({
     this.stage = "",
@@ -25,6 +28,9 @@ class ScannerState {
     this.scanning = false,
     this.totalFileCount = 0,
     this.comparedFileCount = 0,
+    this.matchedCandidateCount = 0,
+    this.totalCandidateCount = 0,
+    this.historyId,
   });
 
   ScannerState copyWith({
@@ -37,6 +43,9 @@ class ScannerState {
     bool? scanning,
     int? totalFileCount,
     int? comparedFileCount,
+    int? matchedCandidateCount,
+    int? totalCandidateCount,
+    String? historyId,
   }) {
     return ScannerState(
       stage: stage ?? this.stage,
@@ -48,6 +57,10 @@ class ScannerState {
       scanning: scanning ?? this.scanning,
       totalFileCount: totalFileCount ?? this.totalFileCount,
       comparedFileCount: comparedFileCount ?? this.comparedFileCount,
+      matchedCandidateCount:
+          matchedCandidateCount ?? this.matchedCandidateCount,
+      totalCandidateCount: totalCandidateCount ?? this.totalCandidateCount,
+      historyId: historyId ?? this.historyId,
     );
   }
 }

@@ -1,97 +1,129 @@
 import 'package:file_selector/file_selector.dart';
-import 'package:filesize/filesize.dart';
-import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
-import 'package:scanner/app/logger.dart';
 import 'package:scanner/src/rust/api/project_api.dart';
 import 'package:scanner/src/rust/project.dart';
 
+import '../history/scan_history.dart';
+import '../settings/scan_exclusions.dart';
+import '../settings/scan_rule_runtime.dart';
+
+enum ProjectViewScanningStatus { idle, scanning, completed }
+
 class ProjectViewState {
+  ProjectViewState({
+    this.path = '',
+    this.status = ProjectViewScanningStatus.idle,
+    this.details = const [],
+    this.currentPath = '',
+    this.scannedFiles = 0,
+    BigInt? scannedBytes,
+    this.completedRoots = 0,
+    this.totalRoots = 0,
+    this.historyId,
+  }) : scannedBytes = scannedBytes ?? BigInt.zero;
+
   final String path;
-  final bool isDone;
+  final ProjectViewScanningStatus status;
   final List<ProjectDetail> details;
-  final String? sizeCondition;
+  final String currentPath;
+  final int scannedFiles;
+  final BigInt scannedBytes;
+  final int completedRoots;
+  final int totalRoots;
+  final String? historyId;
 
-  ProjectViewState(
-      {this.path = "",
-      this.isDone = false,
-      this.details = const [],
-      this.sizeCondition});
+  bool get isScanning => status == ProjectViewScanningStatus.scanning;
+  bool get hasCompleted => status == ProjectViewScanningStatus.completed;
 
-  ProjectViewState copyWith(
-      {String? path,
-      bool? isDone,
-      List<ProjectDetail>? details,
-      String? sizeCondition}) {
+  ProjectViewState copyWith({
+    String? path,
+    ProjectViewScanningStatus? status,
+    List<ProjectDetail>? details,
+    String? currentPath,
+    int? scannedFiles,
+    BigInt? scannedBytes,
+    int? completedRoots,
+    int? totalRoots,
+    String? historyId,
+  }) {
     return ProjectViewState(
-        path: path ?? this.path,
-        isDone: isDone ?? this.isDone,
-        details: details ?? this.details,
-        sizeCondition: sizeCondition ?? this.sizeCondition);
+      path: path ?? this.path,
+      status: status ?? this.status,
+      details: details ?? this.details,
+      currentPath: currentPath ?? this.currentPath,
+      scannedFiles: scannedFiles ?? this.scannedFiles,
+      scannedBytes: scannedBytes ?? this.scannedBytes,
+      completedRoots: completedRoots ?? this.completedRoots,
+      totalRoots: totalRoots ?? this.totalRoots,
+      historyId: historyId ?? this.historyId,
+    );
   }
 }
 
-extension Condition on List<ProjectDetail> {
-  List<ProjectDetail> getBySizeCondition(String? condition) {
-    if (condition == null) {
-      return this;
-    }
-
-    final p = parseFilesize(condition);
-    final result = where((element) => element.size.toInt() > p).toList();
-    logger.info("condition: $condition, result: ${result.length}");
-    return result;
-  }
-}
-
-extension ProjectDetailExtension on ProjectViewState {
-  List<ProjectDetail> getDetails() {
-    return details.getBySizeCondition(sizeCondition);
-  }
-}
-
-class ProjectViewNotifier extends AutoDisposeNotifier<ProjectViewState> {
+class ProjectViewNotifier extends Notifier<ProjectViewState> {
   @override
-  ProjectViewState build() {
-    return ProjectViewState();
-  }
+  ProjectViewState build() => ProjectViewState();
 
-  startScan(TextEditingController controller) async {
-    final String? directoryPath = await getDirectoryPath();
-    if (directoryPath == null) {
-      return;
-    }
-    refresh();
+  Future<void> startScan() async {
+    if (state.isScanning) return;
+    final directoryPath = await getDirectoryPath();
+    if (directoryPath == null) return;
+    final exclusions =
+        await ref.read(scanExclusionsProvider.notifier).ensureLoaded();
+    await syncScanExclusions(
+        exclusions.map((rule) => rule.backendValue).toList());
 
-    controller.text = directoryPath;
-
-    state = state.copyWith(path: directoryPath, isDone: false);
+    final historyId = ref.read(scanHistoryProvider.notifier).start(
+          ScanHistoryKind.largeFiles,
+          directoryPath,
+        );
+    state = ProjectViewState(
+      path: directoryPath,
+      status: ProjectViewScanningStatus.scanning,
+      currentPath: directoryPath,
+      historyId: historyId,
+    );
     projectScan(p: directoryPath);
   }
 
-  refresh() {
-    state = ProjectViewState();
-  }
-
-  refreshWithSizeCondition(String? condition) {
-    if (condition == null) {
+  void handleEvent(ProjectDetail detail) {
+    if (detail.path.startsWith('__scanner_progress__:')) {
+      _handleProgress(detail);
       return;
     }
-    condition = condition.replaceAll(">=", "").trim();
-    state = state.copyWith(sizeCondition: condition);
+
+    state = state.copyWith(details: [...state.details, detail]);
   }
 
-  done() {
-    state = state.copyWith(isDone: true);
-  }
+  void _handleProgress(ProjectDetail detail) {
+    final pieces = detail.path.split(':');
+    if (pieces.length < 5) return;
 
-  addDetails(ProjectDetail d) {
+    final completed = int.tryParse(pieces[1]) ?? state.completedRoots;
+    final total = int.tryParse(pieces[2]) ?? state.totalRoots;
+    final done = pieces[3] == 'true';
+    final currentPath = pieces.sublist(4).join(':');
     state = state.copyWith(
-        details: [...state.details, d],
-        isDone: d.count.toInt() == 0 && d.path == "last");
+      status: done
+          ? ProjectViewScanningStatus.completed
+          : ProjectViewScanningStatus.scanning,
+      currentPath: currentPath,
+      scannedFiles: detail.count.toInt(),
+      scannedBytes: detail.size,
+      completedRoots: completed,
+      totalRoots: total,
+    );
+    if (done && state.historyId != null) {
+      ref.read(scanHistoryProvider.notifier).complete(
+            state.historyId!,
+            fileCount: state.scannedFiles,
+            bytes: state.scannedBytes,
+            resultCount: state.details.length,
+          );
+    }
   }
 }
 
 final projectViewNotifierProvider =
-    AutoDisposeNotifierProvider<ProjectViewNotifier, ProjectViewState>(
+    NotifierProvider<ProjectViewNotifier, ProjectViewState>(
         ProjectViewNotifier.new);

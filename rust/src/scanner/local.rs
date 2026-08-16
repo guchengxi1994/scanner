@@ -1,177 +1,143 @@
-use std::{
-    sync::{mpsc, Arc, RwLock},
-    thread,
-};
+use std::time::{Duration, Instant};
 
 use walkdir::WalkDir;
 
+use crate::scan_rules::active_rules;
+
 use super::{
-    compare_result::CompareResult,
+    compare_result::{send_result, CompareResult},
     event::{CompareEvent, DoneEvent, ResEvent, ScannerEvent, EVENT_SINK},
     file::{File, GLOBAL_FILESET},
     interface::Scanner,
 };
 
-pub struct LocalScanner(pub String);
+const FLUSH_BATCH_SIZE: usize = 512;
+const PROGRESS_INTERVAL: Duration = Duration::from_millis(250);
 
-const LIMIT: usize = 100;
+pub struct LocalScanner {
+    pub path: String,
+}
 
 #[async_trait::async_trait]
 impl Scanner for LocalScanner {
     async fn scan(&self) -> anyhow::Result<()> {
-        let (tx, rx) = mpsc::channel::<String>();
-        let s = self.0.clone();
+        let started_at = Instant::now();
+        let mut pending = Vec::with_capacity(FLUSH_BATCH_SIZE);
+        let mut file_count = 0_u64;
+        let mut last_progress = Instant::now();
+        let rules = active_rules();
 
-        let begin_time = std::time::SystemTime::now();
+        Self::before_scan();
+        send_scanner_event("Scanning files".to_string(), 0, 0.0);
 
-        // send_event("LocalScanner".to_string(), "scan start".to_string());
-        send_scanner_event("LocalScanner".to_string(), 0, 0.0);
-
-        let total = Arc::new(RwLock::new(0));
-
+        for entry in WalkDir::new(&self.path)
+            .follow_links(false)
+            .into_iter()
+            .filter_entry(|entry| !rules.should_skip(entry.path()))
+            .filter_map(Result::ok)
         {
-            let total = Arc::clone(&total);
-            thread::spawn(move || {
-                for entry in WalkDir::new(&s).into_iter().filter_map(|e| e.ok()) {
-                    if entry.path().is_file() {
-                        {
-                            let mut total_write = total.write().unwrap();
-                            *total_write += 1;
-                        }
+            if !entry.file_type().is_file() {
+                continue;
+            }
 
-                        let l = entry.path().display().to_string();
-                        // 发送文件路径
-                        tx.send(l).unwrap();
-                    }
-                }
-            });
-        }
+            if let Ok(file) = File::from_path(entry.path().display().to_string()) {
+                pending.push(file);
+                file_count += 1;
+            }
 
-        let mut path_list: Vec<String> = Vec::new();
+            if pending.len() >= FLUSH_BATCH_SIZE {
+                Self::store_results(std::mem::take(&mut pending))?;
+            }
 
-        for received in rx {
-            path_list.push(received);
-            if path_list.len() >= LIMIT {
-                let count = *total.read().unwrap();
-                let current = std::time::SystemTime::now();
-                // send_event("LocalScanner".to_string(), count);
+            if last_progress.elapsed() >= PROGRESS_INTERVAL {
                 send_scanner_event(
-                    "LocalScanner".to_string(),
-                    count,
-                    current.duration_since(begin_time).unwrap().as_secs_f32(),
+                    "Scanning files".to_string(),
+                    file_count,
+                    started_at.elapsed().as_secs_f32(),
                 );
-                Self::store_results(path_list.clone())?;
-                // 达到限制，清空列表
-                path_list.clear();
+                last_progress = Instant::now();
             }
         }
 
-        Self::store_results(path_list.clone())?;
-        let current = std::time::SystemTime::now();
+        if !pending.is_empty() {
+            Self::store_results(pending)?;
+        }
 
-        let count = *total.read().unwrap();
         send_scanner_event(
-            "LocalScanner".to_string(),
-            count,
-            current.duration_since(begin_time).unwrap().as_secs_f32(),
+            "Matching duplicate candidates".to_string(),
+            file_count,
+            started_at.elapsed().as_secs_f32(),
         );
         self.on_finished()?;
-        send_done_event("LocalScanner".to_string());
-        anyhow::Ok(())
+        send_done_event("Duplicate scan".to_string());
+        Ok(())
     }
 
     fn on_finished(&self) -> anyhow::Result<()> {
-        let begin_time = std::time::SystemTime::now();
-
-        let fileset;
-        {
-            fileset = GLOBAL_FILESET.read().unwrap();
-        }
-
-        let compare_result = CompareResult::from_set(fileset.clone());
-
-        compare_result.refresh();
-
-        let current = std::time::SystemTime::now();
-
-        send_compare_event(
-            "LocalScanner".to_string(),
-            current.duration_since(begin_time).unwrap().as_secs_f32(),
+        let compare_started_at = Instant::now();
+        let file_set = GLOBAL_FILESET.read().unwrap().clone();
+        let mut last_progress = Instant::now() - PROGRESS_INTERVAL;
+        CompareResult::from_set(
+            file_set,
+            |processed, total| {
+                if last_progress.elapsed() >= PROGRESS_INTERVAL || processed == total {
+                    send_matching_progress(processed, total, compare_started_at.elapsed().as_secs_f32());
+                    last_progress = Instant::now();
+                }
+            },
+            send_result,
         );
-
-        // send_event("LocalScanner".to_string(), "done".to_string());
-
-        anyhow::Ok(())
+        send_compare_event(
+            "Duplicate scan".to_string(),
+            compare_started_at.elapsed().as_secs_f32(),
+        );
+        Ok(())
     }
 
-    fn store_results(p: Vec<String>) -> anyhow::Result<()> {
-        let mut results: Vec<File> = Vec::new();
-        for path in p {
-            if let Ok(f) = File::from_path(path) {
-                results.push(f);
-            }
-        }
-
-        let mut fileset = GLOBAL_FILESET.write().unwrap();
-        (*fileset).update_list(results);
-        anyhow::Ok(())
+    fn store_results(files: Vec<File>) -> anyhow::Result<()> {
+        GLOBAL_FILESET.write().unwrap().update_list(files);
+        Ok(())
     }
 }
 
+fn send_matching_progress(processed: u64, total: u64, duration: f32) {
+    send_scanner_event(
+        format!("__duplicate_match_progress__:{processed}:{total}"),
+        0,
+        duration,
+    );
+}
+
 fn send_scanner_event(event_type: String, count: u64, duration: f32) {
-    match EVENT_SINK.try_read() {
-        Ok(s) => match s.as_ref() {
-            Some(s0) => {
-                let _ = s0.add(ResEvent::ScannerEvent(ScannerEvent {
-                    event_type,
-                    count,
-                    duration,
-                }));
-            }
-            None => {
-                println!("[rust-error] Stream is None");
-            }
-        },
-        Err(_) => {
-            println!("[rust-error] Stream read error");
+    if let Ok(sink) = EVENT_SINK.try_read() {
+        if let Some(stream) = sink.as_ref() {
+            let _ = stream.add(ResEvent::ScannerEvent(ScannerEvent {
+                event_type,
+                count,
+                duration,
+            }));
         }
     }
 }
 
 fn send_compare_event(event_type: String, duration: f32) {
-    match EVENT_SINK.try_read() {
-        Ok(s) => match s.as_ref() {
-            Some(s0) => {
-                let _ = s0.add(ResEvent::CompareEvent(CompareEvent {
-                    event_type,
-                    duration,
-                }));
-            }
-            None => {
-                println!("[rust-error] Stream is None");
-            }
-        },
-        Err(_) => {
-            println!("[rust-error] Stream read error");
+    if let Ok(sink) = EVENT_SINK.try_read() {
+        if let Some(stream) = sink.as_ref() {
+            let _ = stream.add(ResEvent::CompareEvent(CompareEvent {
+                event_type,
+                duration,
+            }));
         }
     }
 }
 
 fn send_done_event(event_type: String) {
-    match EVENT_SINK.try_read() {
-        Ok(s) => match s.as_ref() {
-            Some(s0) => {
-                let _ = s0.add(ResEvent::DoneEvent(DoneEvent {
-                    event_type,
-                    is_done: true,
-                }));
-            }
-            None => {
-                println!("[rust-error] Stream is None");
-            }
-        },
-        Err(_) => {
-            println!("[rust-error] Stream read error");
+    if let Ok(sink) = EVENT_SINK.try_read() {
+        if let Some(stream) = sink.as_ref() {
+            let _ = stream.add(ResEvent::DoneEvent(DoneEvent {
+                event_type,
+                is_done: true,
+            }));
         }
     }
 }

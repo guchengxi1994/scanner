@@ -3,6 +3,7 @@
 
 // ignore_for_file: unused_import, unused_element, unnecessary_import, duplicate_ignore, invalid_use_of_internal_member, annotate_overrides, non_constant_identifier_names, curly_braces_in_flow_control_structures, prefer_const_literals_to_create_immutables, unused_field
 
+import 'api/hybrid_search_api.dart';
 import 'api/project_api.dart';
 import 'api/public.dart';
 import 'api/scanner_api.dart';
@@ -12,6 +13,7 @@ import 'dart:async';
 import 'dart:convert';
 import 'dart:ffi' as ffi;
 import 'frb_generated.dart';
+import 'hybrid_search.dart';
 import 'package:flutter_rust_bridge/flutter_rust_bridge_for_generated_io.dart';
 import 'project.dart';
 import 'scanner/compare_result.dart';
@@ -32,6 +34,10 @@ abstract class RustLibApiImplPlatform extends BaseApiImpl<RustLibWire> {
   @protected
   RustStreamSink<CompareResult> dco_decode_StreamSink_compare_result_Sse(
       dynamic raw);
+
+  @protected
+  RustStreamSink<HybridSearchDetail>
+      dco_decode_StreamSink_hybrid_search_detail_Sse(dynamic raw);
 
   @protected
   RustStreamSink<ProjectDetail> dco_decode_StreamSink_project_detail_Sse(
@@ -74,6 +80,15 @@ abstract class RustLibApiImplPlatform extends BaseApiImpl<RustLibWire> {
   File dco_decode_file(dynamic raw);
 
   @protected
+  HybridSearchDetail dco_decode_hybrid_search_detail(dynamic raw);
+
+  @protected
+  int dco_decode_i_32(dynamic raw);
+
+  @protected
+  List<String> dco_decode_list_String(dynamic raw);
+
+  @protected
   List<File> dco_decode_list_file(dynamic raw);
 
   @protected
@@ -95,6 +110,9 @@ abstract class RustLibApiImplPlatform extends BaseApiImpl<RustLibWire> {
   ScannerEvent dco_decode_scanner_event(dynamic raw);
 
   @protected
+  SearchType dco_decode_search_type(dynamic raw);
+
+  @protected
   BigInt dco_decode_u_64(dynamic raw);
 
   @protected
@@ -109,6 +127,11 @@ abstract class RustLibApiImplPlatform extends BaseApiImpl<RustLibWire> {
   @protected
   RustStreamSink<CompareResult> sse_decode_StreamSink_compare_result_Sse(
       SseDeserializer deserializer);
+
+  @protected
+  RustStreamSink<HybridSearchDetail>
+      sse_decode_StreamSink_hybrid_search_detail_Sse(
+          SseDeserializer deserializer);
 
   @protected
   RustStreamSink<ProjectDetail> sse_decode_StreamSink_project_detail_Sse(
@@ -154,6 +177,16 @@ abstract class RustLibApiImplPlatform extends BaseApiImpl<RustLibWire> {
   File sse_decode_file(SseDeserializer deserializer);
 
   @protected
+  HybridSearchDetail sse_decode_hybrid_search_detail(
+      SseDeserializer deserializer);
+
+  @protected
+  int sse_decode_i_32(SseDeserializer deserializer);
+
+  @protected
+  List<String> sse_decode_list_String(SseDeserializer deserializer);
+
+  @protected
   List<File> sse_decode_list_file(SseDeserializer deserializer);
 
   @protected
@@ -175,6 +208,9 @@ abstract class RustLibApiImplPlatform extends BaseApiImpl<RustLibWire> {
   ScannerEvent sse_decode_scanner_event(SseDeserializer deserializer);
 
   @protected
+  SearchType sse_decode_search_type(SseDeserializer deserializer);
+
+  @protected
   BigInt sse_decode_u_64(SseDeserializer deserializer);
 
   @protected
@@ -184,15 +220,16 @@ abstract class RustLibApiImplPlatform extends BaseApiImpl<RustLibWire> {
   void sse_decode_unit(SseDeserializer deserializer);
 
   @protected
-  int sse_decode_i_32(SseDeserializer deserializer);
-
-  @protected
   void sse_encode_AnyhowException(
       AnyhowException self, SseSerializer serializer);
 
   @protected
   void sse_encode_StreamSink_compare_result_Sse(
       RustStreamSink<CompareResult> self, SseSerializer serializer);
+
+  @protected
+  void sse_encode_StreamSink_hybrid_search_detail_Sse(
+      RustStreamSink<HybridSearchDetail> self, SseSerializer serializer);
 
   @protected
   void sse_encode_StreamSink_project_detail_Sse(
@@ -240,6 +277,16 @@ abstract class RustLibApiImplPlatform extends BaseApiImpl<RustLibWire> {
   void sse_encode_file(File self, SseSerializer serializer);
 
   @protected
+  void sse_encode_hybrid_search_detail(
+      HybridSearchDetail self, SseSerializer serializer);
+
+  @protected
+  void sse_encode_i_32(int self, SseSerializer serializer);
+
+  @protected
+  void sse_encode_list_String(List<String> self, SseSerializer serializer);
+
+  @protected
   void sse_encode_list_file(List<File> self, SseSerializer serializer);
 
   @protected
@@ -264,6 +311,9 @@ abstract class RustLibApiImplPlatform extends BaseApiImpl<RustLibWire> {
   void sse_encode_scanner_event(ScannerEvent self, SseSerializer serializer);
 
   @protected
+  void sse_encode_search_type(SearchType self, SseSerializer serializer);
+
+  @protected
   void sse_encode_u_64(BigInt self, SseSerializer serializer);
 
   @protected
@@ -271,9 +321,6 @@ abstract class RustLibApiImplPlatform extends BaseApiImpl<RustLibWire> {
 
   @protected
   void sse_encode_unit(void self, SseSerializer serializer);
-
-  @protected
-  void sse_encode_i_32(int self, SseSerializer serializer);
 }
 
 // Section: wire_class
