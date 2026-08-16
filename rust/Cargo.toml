@@ -7,6 +7,7 @@ edition = "2021"
 crate-type = ["cdylib", "staticlib"]
 
 [dependencies]
+anydoc = "0.1.9"
 anyhow = "1"
 async-trait = "0.1.81"
 crossbeam = "0.8.4"

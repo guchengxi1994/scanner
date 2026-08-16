@@ -46,11 +46,11 @@ dev_dependencies:
   freezed: ^2.5.7
 
 
-dependency_overrides:
-  treemap:
-    path: D:/github_repo/treemap
-  filesize:
-    path: D:/github_repo/filesize_plus
+# dependency_overrides:
+#   treemap:
+#     path: D:/github_repo/treemap
+#   filesize:
+#     path: D:/github_repo/filesize_plus
 
 flutter:
   uses-material-design: true
