@@ -85,6 +85,7 @@ impl Scanner for LocalScanner {
                     last_progress = Instant::now();
                 }
             },
+            |files| send_matching_group(files),
             send_result,
         );
         send_compare_event(
@@ -105,6 +106,18 @@ fn send_matching_progress(processed: u64, total: u64, duration: f32) {
         format!("__duplicate_match_progress__:{processed}:{total}"),
         0,
         duration,
+    );
+}
+
+fn send_matching_group(files: &[File]) {
+    let paths: Vec<&str> = files.iter().map(|file| file.path.as_str()).collect();
+    let Ok(encoded) = serde_json::to_string(&paths) else {
+        return;
+    };
+    send_scanner_event(
+        format!("__duplicate_match_group__:{encoded}"),
+        files.len() as u64,
+        0.0,
     );
 }
 

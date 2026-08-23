@@ -124,7 +124,7 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
                       _SettingInfo(
                         icon: Icons.fingerprint_outlined,
                         title: '重复文件验证',
-                        detail: '先比对尺寸与前后 64KB 采样指纹，再读取完整内容计算 SHA-256。',
+                        detail: '先比对尺寸与前 1MB 快速哈希，再读取候选文件完整内容计算 SHA-256。',
                       ),
                     ],
                   ),

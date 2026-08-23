@@ -16,6 +16,7 @@ class ScannerState {
   final int comparedFileCount;
   final int matchedCandidateCount;
   final int totalCandidateCount;
+  final List<String> currentCompareFiles;
   final String? historyId;
 
   const ScannerState({
@@ -30,6 +31,7 @@ class ScannerState {
     this.comparedFileCount = 0,
     this.matchedCandidateCount = 0,
     this.totalCandidateCount = 0,
+    this.currentCompareFiles = const [],
     this.historyId,
   });
 
@@ -45,6 +47,7 @@ class ScannerState {
     int? comparedFileCount,
     int? matchedCandidateCount,
     int? totalCandidateCount,
+    List<String>? currentCompareFiles,
     String? historyId,
   }) {
     return ScannerState(
@@ -60,6 +63,7 @@ class ScannerState {
       matchedCandidateCount:
           matchedCandidateCount ?? this.matchedCandidateCount,
       totalCandidateCount: totalCandidateCount ?? this.totalCandidateCount,
+      currentCompareFiles: currentCompareFiles ?? this.currentCompareFiles,
       historyId: historyId ?? this.historyId,
     );
   }

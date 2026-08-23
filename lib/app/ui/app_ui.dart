@@ -15,6 +15,7 @@ class AppColors {
   static const amber = Color(0xffe89b12);
   static const amberSoft = Color(0xfffff5df);
   static const red = Color(0xffd9534f);
+  static const ink = Color.fromARGB(255, 119, 112, 112);
 }
 
 class SurfacePanel extends StatelessWidget {

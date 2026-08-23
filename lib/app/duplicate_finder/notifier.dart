@@ -1,3 +1,5 @@
+import 'dart:convert';
+
 import 'package:scanner/src/rust/api/scanner_api.dart';
 import 'package:scanner/src/rust/scanner/compare_result.dart';
 import 'package:scanner/src/rust/scanner/event.dart';
@@ -31,11 +33,15 @@ class ScannerNotifier extends Notifier<ScannerState> {
         totalFileCount: 0,
         comparedFileCount: 0,
         matchedCandidateCount: 0,
-        totalCandidateCount: 0);
+        totalCandidateCount: 0,
+        currentCompareFiles: const []);
   }
 
   void done() {
-    state = state.copyWith(scanning: false);
+    state = state.copyWith(
+      scanning: false,
+      currentCompareFiles: const [],
+    );
     _completeHistory();
   }
 
@@ -123,6 +129,23 @@ class ScannerNotifier extends Notifier<ScannerState> {
 
   void changeStage(ResEvent s) {
     if (s is ResEvent_ScannerEvent) {
+      const groupPrefix = '__duplicate_match_group__:';
+      if (s.field0.eventType.startsWith(groupPrefix)) {
+        final encoded = s.field0.eventType.substring(groupPrefix.length);
+        try {
+          final decoded = jsonDecode(encoded);
+          if (decoded is List) {
+            state = state.copyWith(
+              stage: '正在验证候选文件',
+              currentCompareFiles:
+                  decoded.whereType<String>().toList(growable: false),
+            );
+          }
+        } on FormatException {
+          // Optional activity events must not interrupt a scan.
+        }
+        return;
+      }
       if (s.field0.eventType.startsWith('__duplicate_match_progress__:')) {
         final pieces = s.field0.eventType.split(':');
         if (pieces.length == 3) {
@@ -141,7 +164,10 @@ class ScannerNotifier extends Notifier<ScannerState> {
         stage: s.field0.eventType,
       );
     } else if (s is ResEvent_CompareEvent) {
-      state = state.copyWith(stage: '正在验证文件内容');
+      state = state.copyWith(
+        stage: '正在验证文件内容',
+        currentCompareFiles: const [],
+      );
     } else if (s is ResEvent_DoneEvent) {
       done();
     }

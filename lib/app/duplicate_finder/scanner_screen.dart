@@ -59,7 +59,7 @@ class _ScannerScreenState extends ConsumerState<ScannerScreen> {
         children: [
           PageHeading(
             title: '重复文件扫描',
-            subtitle: '尺寸筛选、前后采样和完整哈希验证，减少无效磁盘读取',
+            subtitle: '尺寸筛选、前 1MB 快速哈希和五点采样验证，减少无效磁盘读取',
             trailing: FilledButton.icon(
               onPressed: state.scanning
                   ? null
@@ -87,8 +87,8 @@ class _ScannerScreenState extends ConsumerState<ScannerScreen> {
                     icon: Icons.copy_outlined,
                     title: state.scanning ? '正在比对文件' : '还没有重复结果',
                     detail: state.scanning
-                        ? '同大小文件会先通过小样本指纹筛选，再进行完整哈希验证。'
-                        : '选择一个文件夹开始扫描，结果只显示内容完全相同的文件。',
+                        ? '同大小文件会先通过前 1MB 指纹筛选，再进行五点采样验证。'
+                        : '选择一个文件夹开始扫描，结果显示采样指纹一致的文件。',
                   )
                 : SurfacePanel(
                     padding: EdgeInsets.zero,
@@ -248,6 +248,10 @@ class _DuplicateStatusState extends State<_DuplicateStatus>
                   : '正在枚举文件并建立大小索引',
               elapsed: _formatElapsed(_elapsed),
             ),
+            if (state.currentCompareFiles.isNotEmpty) ...[
+              const SizedBox(height: 12),
+              _CurrentCompareGroup(files: state.currentCompareFiles),
+            ],
           ],
           const SizedBox(height: 15),
           Wrap(
@@ -264,6 +268,94 @@ class _DuplicateStatusState extends State<_DuplicateStatus>
               _ScanFact(label: '重复文件组', value: '${state.results.length}'),
               _ScanFact(label: '可回收空间', value: formatBytes(reclaimable)),
             ],
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _CurrentCompareGroup extends StatelessWidget {
+  const _CurrentCompareGroup({required this.files});
+
+  final List<String> files;
+
+  @override
+  Widget build(BuildContext context) {
+    const maxVisibleFiles = 3;
+    final visibleFiles = files.take(maxVisibleFiles).toList(growable: false);
+    final remaining = files.length - visibleFiles.length;
+
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Row(
+          children: [
+            const Icon(Icons.compare_arrows_outlined,
+                size: 16, color: AppColors.amber),
+            const SizedBox(width: 6),
+            Text(
+              '当前校验组 · ${files.length} 个文件',
+              style: const TextStyle(
+                color: AppColors.ink,
+                fontSize: 12,
+                fontWeight: FontWeight.w700,
+              ),
+            ),
+          ],
+        ),
+        const SizedBox(height: 6),
+        ...visibleFiles.map(_CompareFileLine.new),
+        if (remaining > 0)
+          Padding(
+            padding: const EdgeInsets.only(left: 23, top: 3),
+            child: Text(
+              '还有 $remaining 个文件',
+              style: const TextStyle(color: AppColors.muted, fontSize: 11),
+            ),
+          ),
+      ],
+    );
+  }
+}
+
+class _CompareFileLine extends StatelessWidget {
+  const _CompareFileLine(this.path);
+
+  final String path;
+
+  @override
+  Widget build(BuildContext context) {
+    final name = path.split(RegExp(r'[\\/]')).last;
+    return Padding(
+      padding: const EdgeInsets.only(top: 3),
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          const Padding(
+            padding: EdgeInsets.only(top: 2),
+            child: Icon(Icons.insert_drive_file_outlined,
+                size: 14, color: AppColors.muted),
+          ),
+          const SizedBox(width: 7),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  name.isEmpty ? path : name,
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: const TextStyle(fontSize: 11.5),
+                ),
+                Text(
+                  path,
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: const TextStyle(color: AppColors.muted, fontSize: 10),
+                ),
+              ],
+            ),
           ),
         ],
       ),

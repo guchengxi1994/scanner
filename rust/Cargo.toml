@@ -32,3 +32,9 @@ codegen-units = 1
 [profile.dev]
 opt-level = 0
 debug = true
+
+# Keep the scanner's hashing hot path optimized during Flutter debug runs.
+# The rest of the crate remains debuggable while SHA-256 avoids the extremely
+# slow unoptimized generic compression loop.
+[profile.dev.package.rust_lib_scanner]
+opt-level = 2
