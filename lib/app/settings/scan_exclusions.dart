@@ -4,6 +4,7 @@ import 'dart:io';
 
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
+import '../storage/app_storage.dart';
 import 'scan_rule_runtime.dart';
 
 enum ScanExclusionKind { directory, glob, regex }
@@ -133,10 +134,7 @@ class ScanExclusionsNotifier extends Notifier<List<ScanExclusionRule>> {
   }
 
   Future<File> _settingsFile() async {
-    final root = Platform.environment['LOCALAPPDATA'] ?? Directory.current.path;
-    final folder = Directory('$root${Platform.pathSeparator}LargeFileScanner');
-    if (!await folder.exists()) await folder.create(recursive: true);
-    return File('${folder.path}${Platform.pathSeparator}scan-exclusions.json');
+    return appDataFile('scan-exclusions.json');
   }
 }
 

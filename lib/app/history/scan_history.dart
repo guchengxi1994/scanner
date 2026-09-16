@@ -1,8 +1,9 @@
 import 'dart:async';
-import 'dart:io';
 
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:isar_community/isar.dart';
+
+import '../storage/app_storage.dart';
 
 part 'scan_history.g.dart';
 
@@ -158,6 +159,16 @@ class ScanHistoryNotifier extends Notifier<List<ScanHistoryItem>> {
     if (completedItem != null) unawaited(_upsert(completedItem!));
   }
 
+  void markInterrupted(String id) {
+    ScanHistoryItem? interruptedItem;
+    state = state.map((item) {
+      if (item.id != id || item.completed) return item;
+      interruptedItem = item;
+      return item;
+    }).toList(growable: false);
+    if (interruptedItem != null) unawaited(_upsert(interruptedItem!));
+  }
+
   Future<void> _load() async {
     try {
       final database = await _getDatabase();
@@ -188,9 +199,7 @@ class ScanHistoryNotifier extends Notifier<List<ScanHistoryItem>> {
 
   Future<Isar> _getDatabase() async {
     if (_database != null) return _database!;
-    final root = Platform.environment['LOCALAPPDATA'] ?? Directory.current.path;
-    final folder = Directory('$root${Platform.pathSeparator}LargeFileScanner');
-    if (!await folder.exists()) await folder.create(recursive: true);
+    final folder = await appDataDirectory();
     _database = await Isar.open(
       [ScanHistoryRecordSchema],
       directory: folder.path,

@@ -7,6 +7,7 @@ use crate::{
 
 const CONTENT_SEARCH_PREFIX: &str = "__anydoc_content_search__:";
 const SCAN_EXCLUSIONS_SYNC_PREFIX: &str = "__scanner_exclusions_sync__";
+const CLEANUP_RULES_SYNC_PREFIX: &str = "__cleanup_rules_sync__";
 
 pub fn hybrid_search_sync(
     p: String,
@@ -23,6 +24,11 @@ pub fn hybrid_search_sync(
         .any(|value| value == SCAN_EXCLUSIONS_SYNC_PREFIX)
     {
         crate::scan_rules::set_active_rules(&excludes);
+        return vec![];
+    }
+
+    if regex.iter().any(|value| value == CLEANUP_RULES_SYNC_PREFIX) {
+        crate::cleanup::set_active_rules(&excludes.first().cloned().unwrap_or_default());
         return vec![];
     }
 

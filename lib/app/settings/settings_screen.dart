@@ -3,6 +3,9 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../navigation.dart';
 import '../ui/app_ui.dart';
+import '../cleanup/cleanup_repository.dart';
+import '../cleanup/cleanup_profile.dart';
+import '../cleanup/cleanup_rule.dart';
 import 'scan_exclusions.dart';
 
 class SettingsScreen extends ConsumerStatefulWidget {
@@ -96,9 +99,138 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
     ref.read(scanExclusionsProvider.notifier).add(result.kind, result.pattern);
   }
 
+  Future<void> _addCleanupRule() async {
+    final nameController = TextEditingController();
+    final scopeController = TextEditingController();
+    final matcherController = TextEditingController();
+    var risk = CleanupRisk.safe;
+    var matcherType = CleanupMatcherType.directoryName;
+    final result = await showDialog<CleanupRule>(
+      context: context,
+      builder: (dialogContext) => AlertDialog(
+        title: const Text('添加清理规则'),
+        content: SizedBox(
+          width: 460,
+          child: StatefulBuilder(
+            builder: (context, setDialogState) => Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                TextField(
+                  controller: nameController,
+                  autofocus: true,
+                  decoration: const InputDecoration(labelText: '规则名称'),
+                ),
+                const SizedBox(height: 10),
+                TextField(
+                  controller: scopeController,
+                  decoration: const InputDecoration(
+                    labelText: '扫描范围',
+                    hintText: r'%LOCALAPPDATA% 或 $HOME/Library/Caches',
+                  ),
+                ),
+                const SizedBox(height: 10),
+                TextField(
+                  controller: matcherController,
+                  decoration: const InputDecoration(
+                    labelText: '匹配值',
+                    hintText: '例如：npm-cache、ipch 或完整路径',
+                  ),
+                ),
+                const SizedBox(height: 10),
+                DropdownButtonFormField<CleanupMatcherType>(
+                  value: matcherType,
+                  decoration: const InputDecoration(labelText: '匹配方式'),
+                  items: const [
+                    DropdownMenuItem(
+                      value: CleanupMatcherType.directoryName,
+                      child: Text('目录名'),
+                    ),
+                    DropdownMenuItem(
+                      value: CleanupMatcherType.pathContains,
+                      child: Text('路径包含'),
+                    ),
+                    DropdownMenuItem(
+                      value: CleanupMatcherType.exactPath,
+                      child: Text('完整路径'),
+                    ),
+                  ],
+                  onChanged: (value) {
+                    if (value != null) {
+                      setDialogState(() => matcherType = value);
+                    }
+                  },
+                ),
+                const SizedBox(height: 10),
+                DropdownButtonFormField<CleanupRisk>(
+                  value: risk,
+                  decoration: const InputDecoration(labelText: '风险等级'),
+                  items: CleanupRisk.values
+                      .map((item) => DropdownMenuItem(
+                            value: item,
+                            child: Text(cleanupRiskLabel(item)),
+                          ))
+                      .toList(),
+                  onChanged: (value) {
+                    if (value != null) setDialogState(() => risk = value);
+                  },
+                ),
+              ],
+            ),
+          ),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(dialogContext).pop(),
+            child: const Text('取消'),
+          ),
+          FilledButton(
+            onPressed: () {
+              final name = nameController.text.trim();
+              final scope = scopeController.text.trim();
+              final matcher = matcherController.text.trim();
+              if (name.isEmpty || scope.isEmpty || matcher.isEmpty) return;
+              Navigator.of(dialogContext).pop(
+                CleanupRule(
+                  id: 'custom-${DateTime.now().microsecondsSinceEpoch}',
+                  name: name,
+                  description: '用户自定义清理规则。',
+                  platform: currentCleanupPlatform,
+                  scope: scope,
+                  matcherType: matcherType,
+                  matcherValue: matcher,
+                  risk: risk,
+                  action: risk == CleanupRisk.safe
+                      ? CleanupActionType.moveToTrash
+                      : CleanupActionType.reportOnly,
+                ),
+              );
+            },
+            child: const Text('添加'),
+          ),
+        ],
+      ),
+    );
+    nameController.dispose();
+    scopeController.dispose();
+    matcherController.dispose();
+    if (result != null && mounted) {
+      ref.read(cleanupRulesProvider.notifier).add(result);
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
     final exclusions = ref.watch(scanExclusionsProvider);
+    final cleanupRules = ref.watch(cleanupRulesProvider);
+    final cleanupProfiles = [
+      ...builtinCleanupProfiles,
+      CleanupProfile(
+        id: 'custom',
+        name: '自定义规则',
+        description: '用户添加的规则，按当前平台保存和执行。',
+        platform: currentCleanupPlatform,
+      ),
+    ];
 
     return Padding(
       padding: const EdgeInsets.fromLTRB(30, 28, 30, 24),
@@ -124,7 +256,7 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
                       _SettingInfo(
                         icon: Icons.fingerprint_outlined,
                         title: '重复文件验证',
-                        detail: '先比对尺寸与前 1MB 快速哈希，再读取候选文件完整内容计算 SHA-256。',
+                        detail: '先比对尺寸与前 1MB 快速哈希，再对候选文件做五点采样验证。',
                       ),
                     ],
                   ),
@@ -165,6 +297,24 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
                       ),
                     ],
                   ),
+                ),
+                const SizedBox(height: 24),
+                SectionTitle(
+                  title: '清理规则',
+                  trailing: FilledButton.icon(
+                    onPressed: _addCleanupRule,
+                    icon: const Icon(Icons.add, size: 17),
+                    label: const Text('添加规则'),
+                  ),
+                ),
+                const SizedBox(height: 10),
+                _CleanupProfilesPanel(
+                  profiles: cleanupProfiles,
+                  rules: cleanupRules,
+                ),
+                const SizedBox(height: 10),
+                _CleanupRulesPanel(
+                  rules: cleanupRules,
                 ),
                 const SizedBox(height: 24),
                 const SectionTitle(title: '实验功能'),
@@ -292,6 +442,189 @@ class _SettingInfo extends StatelessWidget {
           ),
         ),
       ],
+    );
+  }
+}
+
+class _CleanupRulesPanel extends ConsumerWidget {
+  const _CleanupRulesPanel({required this.rules});
+
+  final List<CleanupRule> rules;
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    return SurfacePanel(
+      padding: EdgeInsets.zero,
+      child: Column(
+        children: [
+          for (var index = 0; index < rules.length; index++) ...[
+            _CleanupRuleRow(rule: rules[index]),
+            if (index != rules.length - 1)
+              const Divider(height: 1, color: AppColors.line),
+          ],
+        ],
+      ),
+    );
+  }
+}
+
+class _CleanupProfilesPanel extends ConsumerWidget {
+  const _CleanupProfilesPanel({required this.profiles, required this.rules});
+
+  final List<CleanupProfile> profiles;
+  final List<CleanupRule> rules;
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    return SurfacePanel(
+      padding: EdgeInsets.zero,
+      child: Column(
+        children: [
+          for (var index = 0; index < profiles.length; index++) ...[
+            _CleanupProfileRow(
+              profile: profiles[index],
+              rules: rules,
+            ),
+            if (index != profiles.length - 1)
+              const Divider(height: 1, color: AppColors.line),
+          ],
+        ],
+      ),
+    );
+  }
+}
+
+class _CleanupProfileRow extends ConsumerWidget {
+  const _CleanupProfileRow({required this.profile, required this.rules});
+
+  final CleanupProfile profile;
+  final List<CleanupRule> rules;
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final profileRules =
+        rules.where((rule) => rule.profileId == profile.id).toList();
+    final enabled = profileRules.isNotEmpty &&
+        profileRules.every((rule) => rule.enabled);
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(17, 9, 8, 9),
+      child: Row(
+        children: [
+          Icon(Icons.tune_outlined,
+              color: profile.supported ? AppColors.blue : AppColors.muted,
+              size: 19),
+          const SizedBox(width: 10),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Row(
+                  children: [
+                    Flexible(
+                      child: Text(profile.name,
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                          style: const TextStyle(
+                              fontSize: 13, fontWeight: FontWeight.w700)),
+                    ),
+                    const SizedBox(width: 8),
+                    StatusChip(
+                      label: cleanupPlatformLabel(profile.platform),
+                      color: profile.supported ? AppColors.blue : AppColors.muted,
+                    ),
+                  ],
+                ),
+                const SizedBox(height: 2),
+                Text(
+                  profile.description,
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: const TextStyle(color: AppColors.muted, fontSize: 10),
+                ),
+              ],
+            ),
+          ),
+          Switch.adaptive(
+            value: enabled,
+            onChanged: profile.supported && profileRules.isNotEmpty
+                ? (value) => ref
+                    .read(cleanupRulesProvider.notifier)
+                    .setProfileEnabled(profile.id, value)
+                : null,
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _CleanupRuleRow extends ConsumerWidget {
+  const _CleanupRuleRow({required this.rule});
+
+  final CleanupRule rule;
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final supported = rule.supported;
+    final color = switch (rule.risk) {
+      CleanupRisk.safe => AppColors.green,
+      CleanupRisk.rebuildable => AppColors.blue,
+      CleanupRisk.caution => AppColors.amber,
+      CleanupRisk.protected => AppColors.red,
+    };
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(17, 9, 8, 9),
+      child: Row(
+        children: [
+          Icon(Icons.auto_delete_outlined, color: color, size: 19),
+          const SizedBox(width: 10),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Row(
+                  children: [
+                    Flexible(
+                      child: Text(rule.name,
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                          style: const TextStyle(
+                              fontSize: 13, fontWeight: FontWeight.w700)),
+                    ),
+                    const SizedBox(width: 8),
+                    StatusChip(
+                      label: cleanupPlatformLabel(rule.platform),
+                      color: supported ? AppColors.blue : AppColors.muted,
+                    ),
+                  ],
+                ),
+                const SizedBox(height: 2),
+                Text(
+                  '${cleanupRiskLabel(rule.risk)} · ${rule.scope}',
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: const TextStyle(color: AppColors.muted, fontSize: 10),
+                ),
+              ],
+            ),
+          ),
+          Switch.adaptive(
+            value: rule.enabled,
+            onChanged: supported
+                ? (value) =>
+                    ref.read(cleanupRulesProvider.notifier).setEnabled(rule.id, value)
+                : null,
+          ),
+          if (!rule.builtIn)
+            IconButton(
+              tooltip: '删除规则',
+              onPressed: () =>
+                  ref.read(cleanupRulesProvider.notifier).remove(rule.id),
+              icon: const Icon(Icons.delete_outline,
+                  color: AppColors.muted, size: 19),
+            ),
+        ],
+      ),
     );
   }
 }

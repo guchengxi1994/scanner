@@ -1,4 +1,5 @@
 use std::{
+    collections::HashMap,
     path::PathBuf,
     sync::RwLock,
     time::{Duration, Instant},
@@ -6,10 +7,16 @@ use std::{
 
 use walkdir::WalkDir;
 
+use crate::cleanup::{
+    active_rules as active_cleanup_rules, add_file_to_candidates, candidate_key, matching_rules,
+    CleanupCandidate,
+};
 use crate::frb_generated::StreamSink;
-use crate::scan_rules::active_rules;
+use crate::scan_rules::active_rules as active_scan_rules;
 
 const PROGRESS_INTERVAL: Duration = Duration::from_millis(200);
+const MAX_CLEANUP_CANDIDATES_PER_ROOT: usize = 50;
+const MAX_TRACKED_CLEANUP_CANDIDATES_PER_ROOT: usize = 500;
 
 #[derive(Debug)]
 pub struct ProjectDetail {
@@ -48,6 +55,14 @@ fn send_progress_event(
     });
 }
 
+pub fn send_scan_error(error: &str) {
+    send_detail_event(ProjectDetail {
+        path: format!("__scanner_error__:{error}"),
+        size: 0,
+        count: 0,
+    });
+}
+
 pub struct ProjectView {
     pub path: String,
 }
@@ -57,7 +72,8 @@ impl ProjectView {
     /// The old implementation repeatedly walked the selected root for each
     /// child, multiplying I/O cost on directories with many top-level items.
     pub fn scan(&self) -> anyhow::Result<()> {
-        let rules = active_rules();
+        let rules = active_scan_rules();
+        let cleanup_rules = active_cleanup_rules();
         let roots: Vec<PathBuf> = WalkDir::new(&self.path)
             .follow_links(false)
             .min_depth(1)
@@ -76,6 +92,7 @@ impl ProjectView {
             let root_label = root.display().to_string();
             let mut root_size = 0_u64;
             let mut root_count = 0_u64;
+            let mut cleanup_candidates: HashMap<String, CleanupCandidate> = HashMap::new();
 
             if root.is_file() {
                 if let Ok(metadata) = root.metadata() {
@@ -91,6 +108,25 @@ impl ProjectView {
                     .filter_entry(|entry| !rules.should_skip(entry.path()))
                     .filter_map(Result::ok)
                 {
+                    if entry.file_type().is_dir() {
+                        for rule in matching_rules(entry.path(), &cleanup_rules) {
+                            let key = candidate_key(&rule.id, entry.path());
+                            if !cleanup_candidates.contains_key(&key)
+                                && cleanup_candidates.len()
+                                    >= MAX_TRACKED_CLEANUP_CANDIDATES_PER_ROOT
+                            {
+                                continue;
+                            }
+                            cleanup_candidates
+                                .entry(key)
+                                .or_insert_with(|| CleanupCandidate {
+                                    rule_id: rule.id,
+                                    path: entry.path().display().to_string(),
+                                    size: 0,
+                                    count: 0,
+                                });
+                        }
+                    }
                     if !entry.file_type().is_file() {
                         continue;
                     }
@@ -99,6 +135,11 @@ impl ProjectView {
                         root_count += 1;
                         scanned_files += 1;
                         scanned_bytes += metadata.len();
+                        add_file_to_candidates(
+                            &mut cleanup_candidates,
+                            entry.path(),
+                            metadata.len(),
+                        );
                     }
 
                     if last_progress.elapsed() >= PROGRESS_INTERVAL {
@@ -112,6 +153,22 @@ impl ProjectView {
                         );
                         last_progress = Instant::now();
                     }
+                }
+            }
+
+            let mut cleanup_candidates: Vec<_> = cleanup_candidates.into_values().collect();
+            cleanup_candidates.sort_by(|left, right| right.size.cmp(&left.size));
+            for candidate in cleanup_candidates
+                .into_iter()
+                .filter(|candidate| candidate.count > 0)
+                .take(MAX_CLEANUP_CANDIDATES_PER_ROOT)
+            {
+                if let Ok(encoded) = serde_json::to_string(&candidate) {
+                    send_detail_event(ProjectDetail {
+                        path: format!("__cleanup_candidate__:{encoded}"),
+                        size: candidate.size,
+                        count: candidate.count,
+                    });
                 }
             }
 
