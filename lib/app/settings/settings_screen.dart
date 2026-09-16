@@ -52,9 +52,8 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
                     ),
                   ],
                   selected: {kind},
-                  onSelectionChanged: (selected) => setDialogState(
-                    () => kind = selected.first,
-                  ),
+                  onSelectionChanged: (selected) =>
+                      setDialogState(() => kind = selected.first),
                 ),
                 const SizedBox(height: 16),
                 TextField(
@@ -62,9 +61,9 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
                   autofocus: true,
                   onSubmitted: (value) {
                     if (value.trim().isNotEmpty) {
-                      Navigator.of(dialogContext).pop(
-                        _NewExclusionRule(kind, value.trim()),
-                      );
+                      Navigator.of(
+                        dialogContext,
+                      ).pop(_NewExclusionRule(kind, value.trim()));
                     }
                   },
                   decoration: InputDecoration(
@@ -84,9 +83,9 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
               onPressed: () {
                 final pattern = controller.text.trim();
                 if (pattern.isEmpty) return;
-                Navigator.of(dialogContext).pop(
-                  _NewExclusionRule(kind, pattern),
-                );
+                Navigator.of(
+                  dialogContext,
+                ).pop(_NewExclusionRule(kind, pattern));
               },
               child: const Text('添加'),
             ),
@@ -101,118 +100,201 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
 
   Future<void> _addCleanupRule() async {
     final nameController = TextEditingController();
+    final descriptionController = TextEditingController();
     final scopeController = TextEditingController();
     final matcherController = TextEditingController();
+    final commandController = TextEditingController();
     var risk = CleanupRisk.safe;
     var matcherType = CleanupMatcherType.directoryName;
-    final result = await showDialog<CleanupRule>(
+    var action = CleanupActionType.moveToTrash;
+    final result = await showAppDialog<CleanupRule>(
       context: context,
-      builder: (dialogContext) => AlertDialog(
-        title: const Text('添加清理规则'),
-        content: SizedBox(
-          width: 460,
-          child: StatefulBuilder(
-            builder: (context, setDialogState) => Column(
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                TextField(
-                  controller: nameController,
-                  autofocus: true,
-                  decoration: const InputDecoration(labelText: '规则名称'),
-                ),
-                const SizedBox(height: 10),
-                TextField(
-                  controller: scopeController,
-                  decoration: const InputDecoration(
-                    labelText: '扫描范围',
-                    hintText: r'%LOCALAPPDATA% 或 $HOME/Library/Caches',
-                  ),
-                ),
-                const SizedBox(height: 10),
-                TextField(
-                  controller: matcherController,
-                  decoration: const InputDecoration(
-                    labelText: '匹配值',
-                    hintText: '例如：npm-cache、ipch 或完整路径',
-                  ),
-                ),
-                const SizedBox(height: 10),
-                DropdownButtonFormField<CleanupMatcherType>(
-                  value: matcherType,
-                  decoration: const InputDecoration(labelText: '匹配方式'),
-                  items: const [
-                    DropdownMenuItem(
-                      value: CleanupMatcherType.directoryName,
-                      child: Text('目录名'),
+      builder: (dialogContext) => StatefulBuilder(
+        builder: (context, setDialogState) => AppDialog(
+          title: '添加清理规则',
+          subtitle:
+              '${cleanupPlatformLabel(currentCleanupPlatform)} · 命中触发条件后显示对应的处理建议',
+          icon: Icons.rule_folder_outlined,
+          content: ConstrainedBox(
+            constraints: BoxConstraints(
+              maxHeight: MediaQuery.sizeOf(context).height * 0.56,
+            ),
+            child: SingleChildScrollView(
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  TextField(
+                    controller: nameController,
+                    autofocus: true,
+                    decoration: const InputDecoration(
+                      labelText: '规则名称',
+                      hintText: '例如：项目构建缓存',
                     ),
-                    DropdownMenuItem(
-                      value: CleanupMatcherType.pathContains,
-                      child: Text('路径包含'),
+                  ),
+                  const SizedBox(height: 12),
+                  TextField(
+                    controller: descriptionController,
+                    maxLines: 2,
+                    decoration: const InputDecoration(
+                      labelText: '建议说明',
+                      hintText: '说明触发后为什么可以清理，或应该如何处理。',
+                      prefixIcon: Icon(Icons.notes_outlined),
+                      alignLabelWithHint: true,
                     ),
-                    DropdownMenuItem(
-                      value: CleanupMatcherType.exactPath,
-                      child: Text('完整路径'),
+                  ),
+                  const SizedBox(height: 12),
+                  TextField(
+                    controller: scopeController,
+                    decoration: const InputDecoration(
+                      labelText: '触发范围',
+                      hintText: r'%LOCALAPPDATA% 或 $HOME/Library/Caches',
+                      prefixIcon: Icon(Icons.account_tree_outlined),
+                    ),
+                  ),
+                  const SizedBox(height: 12),
+                  TextField(
+                    controller: matcherController,
+                    decoration: const InputDecoration(
+                      labelText: '触发条件',
+                      hintText: '例如：npm-cache、ipch 或完整路径',
+                      prefixIcon: Icon(Icons.filter_alt_outlined),
+                    ),
+                  ),
+                  const SizedBox(height: 12),
+                  AppSelectField<CleanupMatcherType>(
+                    label: '触发方式',
+                    icon: Icons.tune_outlined,
+                    value: matcherType,
+                    options: const [
+                      AppSelectOption(
+                        value: CleanupMatcherType.directoryName,
+                        label: '目录名',
+                        icon: Icons.folder_outlined,
+                      ),
+                      AppSelectOption(
+                        value: CleanupMatcherType.pathContains,
+                        label: '路径包含',
+                        icon: Icons.route_outlined,
+                      ),
+                      AppSelectOption(
+                        value: CleanupMatcherType.exactPath,
+                        label: '完整路径',
+                        icon: Icons.link_outlined,
+                      ),
+                    ],
+                    onChanged: (value) =>
+                        setDialogState(() => matcherType = value),
+                  ),
+                  const SizedBox(height: 12),
+                  AppSelectField<CleanupActionType>(
+                    label: '触发后的建议动作',
+                    icon: Icons.auto_awesome_outlined,
+                    value: action,
+                    options: const [
+                      AppSelectOption(
+                        value: CleanupActionType.moveToTrash,
+                        label: '移到回收站',
+                        icon: Icons.delete_outline,
+                      ),
+                      AppSelectOption(
+                        value: CleanupActionType.externalInstructions,
+                        label: '显示命令并允许执行',
+                        icon: Icons.terminal_outlined,
+                      ),
+                      AppSelectOption(
+                        value: CleanupActionType.reportOnly,
+                        label: '仅显示建议',
+                        icon: Icons.info_outline,
+                      ),
+                    ],
+                    onChanged: (value) => setDialogState(() => action = value),
+                  ),
+                  const SizedBox(height: 12),
+                  AppSelectField<CleanupRisk>(
+                    label: '风险等级',
+                    icon: Icons.shield_outlined,
+                    value: risk,
+                    options: [
+                      for (final item in CleanupRisk.values)
+                        AppSelectOption(
+                          value: item,
+                          label: cleanupRiskLabel(item),
+                          icon: switch (item) {
+                            CleanupRisk.safe => Icons.verified_outlined,
+                            CleanupRisk.rebuildable => Icons.refresh_outlined,
+                            CleanupRisk.caution => Icons.warning_amber_outlined,
+                            CleanupRisk.protected => Icons.lock_outline,
+                          },
+                        ),
+                    ],
+                    onChanged: (value) => setDialogState(() => risk = value),
+                  ),
+                  if (action == CleanupActionType.externalInstructions) ...[
+                    const SizedBox(height: 12),
+                    TextField(
+                      controller: commandController,
+                      maxLines: 2,
+                      decoration: const InputDecoration(
+                        labelText: '建议命令',
+                        hintText: '例如：pnpm store prune 或 npm cache verify',
+                        prefixIcon: Icon(Icons.code_outlined),
+                        alignLabelWithHint: true,
+                      ),
                     ),
                   ],
-                  onChanged: (value) {
-                    if (value != null) {
-                      setDialogState(() => matcherType = value);
-                    }
-                  },
-                ),
-                const SizedBox(height: 10),
-                DropdownButtonFormField<CleanupRisk>(
-                  value: risk,
-                  decoration: const InputDecoration(labelText: '风险等级'),
-                  items: CleanupRisk.values
-                      .map((item) => DropdownMenuItem(
-                            value: item,
-                            child: Text(cleanupRiskLabel(item)),
-                          ))
-                      .toList(),
-                  onChanged: (value) {
-                    if (value != null) setDialogState(() => risk = value);
-                  },
-                ),
-              ],
+                ],
+              ),
             ),
           ),
+          actions: [
+            TextButton.icon(
+              onPressed: () => Navigator.of(dialogContext).pop(),
+              icon: const Icon(Icons.close, size: 17),
+              label: const Text('取消'),
+            ),
+            FilledButton.icon(
+              onPressed: () {
+                final name = nameController.text.trim();
+                final description = descriptionController.text.trim();
+                final scope = scopeController.text.trim();
+                final matcher = matcherController.text.trim();
+                if (name.isEmpty || scope.isEmpty || matcher.isEmpty) return;
+                if (action == CleanupActionType.externalInstructions &&
+                    commandController.text.trim().isEmpty) {
+                  return;
+                }
+                Navigator.of(dialogContext).pop(
+                  CleanupRule(
+                    id: 'custom-${DateTime.now().microsecondsSinceEpoch}',
+                    name: name,
+                    description: description.isEmpty
+                        ? '用户自定义清理规则。'
+                        : description,
+                    platform: currentCleanupPlatform,
+                    scope: scope,
+                    matcherType: matcherType,
+                    matcherValue: matcher,
+                    risk: risk,
+                    action: action,
+                    externalCommand:
+                        action == CleanupActionType.externalInstructions
+                        ? commandController.text.trim()
+                        : null,
+                  ),
+                );
+              },
+              icon: const Icon(Icons.add, size: 18),
+              label: const Text('添加规则'),
+            ),
+          ],
         ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.of(dialogContext).pop(),
-            child: const Text('取消'),
-          ),
-          FilledButton(
-            onPressed: () {
-              final name = nameController.text.trim();
-              final scope = scopeController.text.trim();
-              final matcher = matcherController.text.trim();
-              if (name.isEmpty || scope.isEmpty || matcher.isEmpty) return;
-              Navigator.of(dialogContext).pop(
-                CleanupRule(
-                  id: 'custom-${DateTime.now().microsecondsSinceEpoch}',
-                  name: name,
-                  description: '用户自定义清理规则。',
-                  platform: currentCleanupPlatform,
-                  scope: scope,
-                  matcherType: matcherType,
-                  matcherValue: matcher,
-                  risk: risk,
-                  action: risk == CleanupRisk.safe
-                      ? CleanupActionType.moveToTrash
-                      : CleanupActionType.reportOnly,
-                ),
-              );
-            },
-            child: const Text('添加'),
-          ),
-        ],
       ),
     );
     nameController.dispose();
+    descriptionController.dispose();
     scopeController.dispose();
     matcherController.dispose();
+    commandController.dispose();
     if (result != null && mounted) {
       ref.read(cleanupRulesProvider.notifier).add(result);
     }
@@ -270,30 +352,50 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
                     children: [
                       SwitchListTile.adaptive(
                         contentPadding: const EdgeInsets.symmetric(
-                            horizontal: 17, vertical: 5),
+                          horizontal: 17,
+                          vertical: 5,
+                        ),
                         value: _showPaths,
                         onChanged: (value) =>
                             setState(() => _showPaths = value),
-                        title: const Text('显示完整路径',
-                            style: TextStyle(
-                                fontSize: 14, fontWeight: FontWeight.w600)),
-                        subtitle: const Text('在扫描结果中保留文件的完整位置。',
-                            style: TextStyle(
-                                fontSize: 12, color: AppColors.muted)),
+                        title: const Text(
+                          '显示完整路径',
+                          style: TextStyle(
+                            fontSize: 14,
+                            fontWeight: FontWeight.w600,
+                          ),
+                        ),
+                        subtitle: const Text(
+                          '在扫描结果中保留文件的完整位置。',
+                          style: TextStyle(
+                            fontSize: 12,
+                            color: AppColors.muted,
+                          ),
+                        ),
                       ),
                       const Divider(height: 1, color: AppColors.line),
                       SwitchListTile.adaptive(
                         contentPadding: const EdgeInsets.symmetric(
-                            horizontal: 17, vertical: 5),
+                          horizontal: 17,
+                          vertical: 5,
+                        ),
                         value: _confirmTrash,
                         onChanged: (value) =>
                             setState(() => _confirmTrash = value),
-                        title: const Text('删除前确认',
-                            style: TextStyle(
-                                fontSize: 14, fontWeight: FontWeight.w600)),
-                        subtitle: const Text('将文件移到系统回收站前显示确认步骤。',
-                            style: TextStyle(
-                                fontSize: 12, color: AppColors.muted)),
+                        title: const Text(
+                          '删除前确认',
+                          style: TextStyle(
+                            fontSize: 14,
+                            fontWeight: FontWeight.w600,
+                          ),
+                        ),
+                        subtitle: const Text(
+                          '将文件移到系统回收站前显示确认步骤。',
+                          style: TextStyle(
+                            fontSize: 12,
+                            color: AppColors.muted,
+                          ),
+                        ),
                       ),
                     ],
                   ),
@@ -313,9 +415,7 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
                   rules: cleanupRules,
                 ),
                 const SizedBox(height: 10),
-                _CleanupRulesPanel(
-                  rules: cleanupRules,
-                ),
+                _CleanupRulesPanel(rules: cleanupRules),
                 const SizedBox(height: 24),
                 const SectionTitle(title: '实验功能'),
                 const SizedBox(height: 10),
@@ -329,21 +429,32 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
                           color: AppColors.amberSoft,
                           borderRadius: BorderRadius.circular(7),
                         ),
-                        child: const Icon(Icons.manage_search_outlined,
-                            color: AppColors.amber, size: 20),
+                        child: const Icon(
+                          Icons.manage_search_outlined,
+                          color: AppColors.amber,
+                          size: 20,
+                        ),
                       ),
                       const SizedBox(width: 11),
                       const Expanded(
                         child: Column(
                           crossAxisAlignment: CrossAxisAlignment.start,
                           children: [
-                            Text('文档内容检索',
-                                style: TextStyle(
-                                    fontSize: 14, fontWeight: FontWeight.w700)),
+                            Text(
+                              '文档内容检索',
+                              style: TextStyle(
+                                fontSize: 14,
+                                fontWeight: FontWeight.w700,
+                              ),
+                            ),
                             SizedBox(height: 3),
-                            Text('使用 AnyDoc 在本机转换并匹配支持的文档内容。',
-                                style: TextStyle(
-                                    color: AppColors.muted, fontSize: 12)),
+                            Text(
+                              '使用 AnyDoc 在本机转换并匹配支持的文档内容。',
+                              style: TextStyle(
+                                color: AppColors.muted,
+                                fontSize: 12,
+                              ),
+                            ),
                           ],
                         ),
                       ),
@@ -370,15 +481,21 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
                   child: exclusions.isEmpty
                       ? const Padding(
                           padding: EdgeInsets.symmetric(
-                              horizontal: 17, vertical: 18),
-                          child: Text('未排除任何位置',
-                              style: TextStyle(color: AppColors.muted)),
+                            horizontal: 17,
+                            vertical: 18,
+                          ),
+                          child: Text(
+                            '未排除任何位置',
+                            style: TextStyle(color: AppColors.muted),
+                          ),
                         )
                       : Column(
                           children: [
-                            for (var index = 0;
-                                index < exclusions.length;
-                                index++) ...[
+                            for (
+                              var index = 0;
+                              index < exclusions.length;
+                              index++
+                            ) ...[
                               _ExclusionRuleRow(rule: exclusions[index]),
                               if (index != exclusions.length - 1)
                                 const Divider(height: 1, color: AppColors.line),
@@ -412,8 +529,11 @@ String _ruleHint(ScanExclusionKind kind) {
 }
 
 class _SettingInfo extends StatelessWidget {
-  const _SettingInfo(
-      {required this.icon, required this.title, required this.detail});
+  const _SettingInfo({
+    required this.icon,
+    required this.title,
+    required this.detail,
+  });
 
   final IconData icon;
   final String title;
@@ -431,13 +551,22 @@ class _SettingInfo extends StatelessWidget {
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              Text(title,
-                  style: const TextStyle(
-                      fontSize: 14, fontWeight: FontWeight.w700)),
+              Text(
+                title,
+                style: const TextStyle(
+                  fontSize: 14,
+                  fontWeight: FontWeight.w700,
+                ),
+              ),
               const SizedBox(height: 4),
-              Text(detail,
-                  style: const TextStyle(
-                      color: AppColors.muted, fontSize: 12, height: 1.4)),
+              Text(
+                detail,
+                style: const TextStyle(
+                  color: AppColors.muted,
+                  fontSize: 12,
+                  height: 1.4,
+                ),
+              ),
             ],
           ),
         ),
@@ -481,10 +610,7 @@ class _CleanupProfilesPanel extends ConsumerWidget {
       child: Column(
         children: [
           for (var index = 0; index < profiles.length; index++) ...[
-            _CleanupProfileRow(
-              profile: profiles[index],
-              rules: rules,
-            ),
+            _CleanupProfileRow(profile: profiles[index], rules: rules),
             if (index != profiles.length - 1)
               const Divider(height: 1, color: AppColors.line),
           ],
@@ -502,17 +628,20 @@ class _CleanupProfileRow extends ConsumerWidget {
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
-    final profileRules =
-        rules.where((rule) => rule.profileId == profile.id).toList();
-    final enabled = profileRules.isNotEmpty &&
-        profileRules.every((rule) => rule.enabled);
+    final profileRules = rules
+        .where((rule) => rule.profileId == profile.id)
+        .toList();
+    final enabled =
+        profileRules.isNotEmpty && profileRules.every((rule) => rule.enabled);
     return Padding(
       padding: const EdgeInsets.fromLTRB(17, 9, 8, 9),
       child: Row(
         children: [
-          Icon(Icons.tune_outlined,
-              color: profile.supported ? AppColors.blue : AppColors.muted,
-              size: 19),
+          Icon(
+            Icons.tune_outlined,
+            color: profile.supported ? AppColors.blue : AppColors.muted,
+            size: 19,
+          ),
           const SizedBox(width: 10),
           Expanded(
             child: Column(
@@ -521,16 +650,22 @@ class _CleanupProfileRow extends ConsumerWidget {
                 Row(
                   children: [
                     Flexible(
-                      child: Text(profile.name,
-                          maxLines: 1,
-                          overflow: TextOverflow.ellipsis,
-                          style: const TextStyle(
-                              fontSize: 13, fontWeight: FontWeight.w700)),
+                      child: Text(
+                        profile.name,
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                        style: const TextStyle(
+                          fontSize: 13,
+                          fontWeight: FontWeight.w700,
+                        ),
+                      ),
                     ),
                     const SizedBox(width: 8),
                     StatusChip(
                       label: cleanupPlatformLabel(profile.platform),
-                      color: profile.supported ? AppColors.blue : AppColors.muted,
+                      color: profile.supported
+                          ? AppColors.blue
+                          : AppColors.muted,
                     ),
                   ],
                 ),
@@ -548,8 +683,8 @@ class _CleanupProfileRow extends ConsumerWidget {
             value: enabled,
             onChanged: profile.supported && profileRules.isNotEmpty
                 ? (value) => ref
-                    .read(cleanupRulesProvider.notifier)
-                    .setProfileEnabled(profile.id, value)
+                      .read(cleanupRulesProvider.notifier)
+                      .setProfileEnabled(profile.id, value)
                 : null,
           ),
         ],
@@ -566,6 +701,9 @@ class _CleanupRuleRow extends ConsumerWidget {
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final supported = rule.supported;
+    final actionDetail = rule.externalCommand == null
+        ? cleanupActionLabel(rule.action)
+        : '${cleanupActionLabel(rule.action)} · ${rule.externalCommand}';
     final color = switch (rule.risk) {
       CleanupRisk.safe => AppColors.green,
       CleanupRisk.rebuildable => AppColors.blue,
@@ -585,11 +723,15 @@ class _CleanupRuleRow extends ConsumerWidget {
                 Row(
                   children: [
                     Flexible(
-                      child: Text(rule.name,
-                          maxLines: 1,
-                          overflow: TextOverflow.ellipsis,
-                          style: const TextStyle(
-                              fontSize: 13, fontWeight: FontWeight.w700)),
+                      child: Text(
+                        rule.name,
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                        style: const TextStyle(
+                          fontSize: 13,
+                          fontWeight: FontWeight.w700,
+                        ),
+                      ),
                     ),
                     const SizedBox(width: 8),
                     StatusChip(
@@ -600,8 +742,8 @@ class _CleanupRuleRow extends ConsumerWidget {
                 ),
                 const SizedBox(height: 2),
                 Text(
-                  '${cleanupRiskLabel(rule.risk)} · ${rule.scope}',
-                  maxLines: 1,
+                  '${cleanupRiskLabel(rule.risk)} · $actionDetail · ${rule.scope}',
+                  maxLines: 2,
                   overflow: TextOverflow.ellipsis,
                   style: const TextStyle(color: AppColors.muted, fontSize: 10),
                 ),
@@ -611,8 +753,9 @@ class _CleanupRuleRow extends ConsumerWidget {
           Switch.adaptive(
             value: rule.enabled,
             onChanged: supported
-                ? (value) =>
-                    ref.read(cleanupRulesProvider.notifier).setEnabled(rule.id, value)
+                ? (value) => ref
+                      .read(cleanupRulesProvider.notifier)
+                      .setEnabled(rule.id, value)
                 : null,
           ),
           if (!rule.builtIn)
@@ -620,8 +763,11 @@ class _CleanupRuleRow extends ConsumerWidget {
               tooltip: '删除规则',
               onPressed: () =>
                   ref.read(cleanupRulesProvider.notifier).remove(rule.id),
-              icon: const Icon(Icons.delete_outline,
-                  color: AppColors.muted, size: 19),
+              icon: const Icon(
+                Icons.delete_outline,
+                color: AppColors.muted,
+                size: 19,
+              ),
             ),
         ],
       ),
@@ -638,20 +784,16 @@ class _ExclusionRuleRow extends ConsumerWidget {
   Widget build(BuildContext context, WidgetRef ref) {
     final (icon, color, kindLabel) = switch (rule.kind) {
       ScanExclusionKind.directory => (
-          Icons.folder_outlined,
-          AppColors.blue,
-          '目录名',
-        ),
+        Icons.folder_outlined,
+        AppColors.blue,
+        '目录名',
+      ),
       ScanExclusionKind.glob => (
-          Icons.data_object_outlined,
-          AppColors.amber,
-          '通配符',
-        ),
-      ScanExclusionKind.regex => (
-          Icons.code_outlined,
-          AppColors.green,
-          '正则',
-        ),
+        Icons.data_object_outlined,
+        AppColors.amber,
+        '通配符',
+      ),
+      ScanExclusionKind.regex => (Icons.code_outlined, AppColors.green, '正则'),
     };
     return Padding(
       padding: const EdgeInsets.fromLTRB(17, 10, 8, 10),
@@ -673,8 +815,11 @@ class _ExclusionRuleRow extends ConsumerWidget {
             tooltip: '删除规则',
             onPressed: () =>
                 ref.read(scanExclusionsProvider.notifier).remove(rule.id),
-            icon: const Icon(Icons.delete_outline,
-                size: 19, color: AppColors.muted),
+            icon: const Icon(
+              Icons.delete_outline,
+              size: 19,
+              color: AppColors.muted,
+            ),
           ),
         ],
       ),

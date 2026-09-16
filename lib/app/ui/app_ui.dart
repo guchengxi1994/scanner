@@ -44,6 +44,257 @@ class SurfacePanel extends StatelessWidget {
   }
 }
 
+class AppDialog extends StatelessWidget {
+  const AppDialog({
+    super.key,
+    required this.title,
+    required this.content,
+    this.subtitle,
+    this.icon,
+    this.accent = AppColors.blue,
+    this.actions = const [],
+  });
+
+  final String title;
+  final String? subtitle;
+  final IconData? icon;
+  final Color accent;
+  final Widget content;
+  final List<Widget> actions;
+
+  @override
+  Widget build(BuildContext context) {
+    return Dialog(
+      backgroundColor: Colors.transparent,
+      elevation: 0,
+      insetPadding: const EdgeInsets.symmetric(horizontal: 24, vertical: 24),
+      child: ConstrainedBox(
+        constraints: const BoxConstraints(maxWidth: 520),
+        child: Material(
+          color: AppColors.surface,
+          borderRadius: BorderRadius.circular(10),
+          clipBehavior: Clip.antiAlias,
+          child: DecoratedBox(
+            decoration: BoxDecoration(
+              border: Border.all(color: AppColors.line),
+              borderRadius: BorderRadius.circular(10),
+            ),
+            child: Padding(
+              padding: const EdgeInsets.fromLTRB(22, 20, 22, 16),
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Row(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      if (icon != null) ...[
+                        Container(
+                          width: 36,
+                          height: 36,
+                          decoration: BoxDecoration(
+                            color: accent.withValues(alpha: 0.11),
+                            borderRadius: BorderRadius.circular(8),
+                          ),
+                          child: Icon(icon, color: accent, size: 20),
+                        ),
+                        const SizedBox(width: 12),
+                      ],
+                      Expanded(
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Text(
+                              title,
+                              style: const TextStyle(
+                                fontSize: 16,
+                                fontWeight: FontWeight.w700,
+                              ),
+                            ),
+                            if (subtitle != null) ...[
+                              const SizedBox(height: 5),
+                              Text(
+                                subtitle!,
+                                style: const TextStyle(
+                                  color: AppColors.muted,
+                                  fontSize: 12,
+                                  height: 1.35,
+                                ),
+                              ),
+                            ],
+                          ],
+                        ),
+                      ),
+                      IconButton(
+                        tooltip: '关闭',
+                        onPressed: () => Navigator.of(context).pop(),
+                        icon: const Icon(Icons.close, size: 19),
+                        visualDensity: VisualDensity.compact,
+                      ),
+                    ],
+                  ),
+                  const SizedBox(height: 18),
+                  content,
+                  if (actions.isNotEmpty) ...[
+                    const SizedBox(height: 20),
+                    OverflowBar(
+                      alignment: MainAxisAlignment.end,
+                      spacing: 8,
+                      overflowAlignment: OverflowBarAlignment.end,
+                      overflowSpacing: 8,
+                      children: actions,
+                    ),
+                  ],
+                ],
+              ),
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+class AppSelectOption<T> {
+  const AppSelectOption({required this.value, required this.label, this.icon});
+
+  final T value;
+  final String label;
+  final IconData? icon;
+}
+
+class AppSelectField<T> extends StatelessWidget {
+  const AppSelectField({
+    super.key,
+    required this.label,
+    required this.value,
+    required this.options,
+    required this.onChanged,
+    this.icon,
+  });
+
+  final String label;
+  final T value;
+  final List<AppSelectOption<T>> options;
+  final ValueChanged<T> onChanged;
+  final IconData? icon;
+
+  @override
+  Widget build(BuildContext context) {
+    final selected = options.firstWhere(
+      (option) => option.value == value,
+      orElse: () => options.first,
+    );
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Text(
+          label,
+          style: const TextStyle(
+            color: AppColors.muted,
+            fontSize: 12,
+            fontWeight: FontWeight.w600,
+          ),
+        ),
+        const SizedBox(height: 6),
+        MenuAnchor(
+          style: MenuStyle(
+            backgroundColor: const WidgetStatePropertyAll(AppColors.surface),
+            surfaceTintColor: const WidgetStatePropertyAll(Colors.transparent),
+            elevation: const WidgetStatePropertyAll(8),
+            shape: WidgetStatePropertyAll(
+              RoundedRectangleBorder(
+                borderRadius: BorderRadius.circular(8),
+                side: const BorderSide(color: AppColors.line),
+              ),
+            ),
+            padding: const WidgetStatePropertyAll(
+              EdgeInsets.symmetric(vertical: 6),
+            ),
+          ),
+          menuChildren: [
+            for (final option in options)
+              MenuItemButton(
+                onPressed: () => onChanged(option.value),
+                leadingIcon: option.icon == null
+                    ? null
+                    : Icon(option.icon, size: 18, color: AppColors.muted),
+                style: ButtonStyle(
+                  foregroundColor: const WidgetStatePropertyAll(AppColors.text),
+                  padding: const WidgetStatePropertyAll(
+                    EdgeInsets.symmetric(horizontal: 14, vertical: 3),
+                  ),
+                  minimumSize: const WidgetStatePropertyAll(Size(220, 42)),
+                ),
+                child: Text(option.label),
+              ),
+          ],
+          builder: (context, controller, child) => InkWell(
+            onTap: () {
+              if (controller.isOpen) {
+                controller.close();
+              } else {
+                controller.open();
+              }
+            },
+            borderRadius: BorderRadius.circular(6),
+            child: Container(
+              constraints: const BoxConstraints(minHeight: 48),
+              padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 9),
+              decoration: BoxDecoration(
+                color: AppColors.canvas,
+                border: Border.all(
+                  color: controller.isOpen ? AppColors.blue : AppColors.line,
+                  width: controller.isOpen ? 1.4 : 1,
+                ),
+                borderRadius: BorderRadius.circular(6),
+              ),
+              child: Row(
+                children: [
+                  if (icon != null) ...[
+                    Icon(icon, color: AppColors.muted, size: 18),
+                    const SizedBox(width: 9),
+                  ],
+                  Expanded(
+                    child: Text(
+                      selected.label,
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: const TextStyle(
+                        color: AppColors.text,
+                        fontSize: 13,
+                        fontWeight: FontWeight.w600,
+                      ),
+                    ),
+                  ),
+                  Icon(
+                    controller.isOpen
+                        ? Icons.keyboard_arrow_up
+                        : Icons.keyboard_arrow_down,
+                    color: AppColors.muted,
+                    size: 19,
+                  ),
+                ],
+              ),
+            ),
+          ),
+        ),
+      ],
+    );
+  }
+}
+
+Future<T?> showAppDialog<T>({
+  required BuildContext context,
+  required WidgetBuilder builder,
+}) {
+  return showDialog<T>(
+    context: context,
+    barrierColor: Colors.black.withValues(alpha: 0.32),
+    builder: builder,
+  );
+}
+
 class PageHeading extends StatelessWidget {
   const PageHeading({
     super.key,
@@ -143,8 +394,10 @@ class MetricTile extends StatelessWidget {
         children: [
           Icon(icon, color: color, size: 20),
           const Spacer(),
-          Text(label,
-              style: const TextStyle(color: AppColors.muted, fontSize: 12)),
+          Text(
+            label,
+            style: const TextStyle(color: AppColors.muted, fontSize: 12),
+          ),
           const SizedBox(height: 3),
           Text(
             value,
@@ -155,8 +408,10 @@ class MetricTile extends StatelessWidget {
             ),
           ),
           if (note != null)
-            Text(note!,
-                style: const TextStyle(color: AppColors.muted, fontSize: 11)),
+            Text(
+              note!,
+              style: const TextStyle(color: AppColors.muted, fontSize: 11),
+            ),
         ],
       ),
     );
@@ -204,12 +459,12 @@ class EmptyState extends StatelessWidget {
               detail,
               textAlign: TextAlign.center,
               style: const TextStyle(
-                  color: AppColors.muted, fontSize: 13, height: 1.45),
+                color: AppColors.muted,
+                fontSize: 13,
+                height: 1.45,
+              ),
             ),
-            if (action != null) ...[
-              const SizedBox(height: 18),
-              action!,
-            ],
+            if (action != null) ...[const SizedBox(height: 18), action!],
           ],
         ),
       ),
@@ -233,8 +488,11 @@ class StatusChip extends StatelessWidget {
       ),
       child: Text(
         label,
-        style:
-            TextStyle(color: color, fontSize: 11, fontWeight: FontWeight.w700),
+        style: TextStyle(
+          color: color,
+          fontSize: 11,
+          fontWeight: FontWeight.w700,
+        ),
       ),
     );
   }

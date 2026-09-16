@@ -5,7 +5,6 @@ import 'dart:io';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import 'builtin_cleanup_rules.dart';
-import 'cleanup_profile.dart';
 import 'cleanup_rule.dart';
 import '../storage/app_storage.dart';
 
@@ -50,13 +49,17 @@ class CleanupRulesNotifier extends Notifier<List<CleanupRule>> {
 
   void setProfileEnabled(String profileId, bool enabled) {
     var changed = false;
-    final next = state.map((rule) {
-      if (rule.profileId != profileId || !rule.supported || rule.enabled == enabled) {
-        return rule;
-      }
-      changed = true;
-      return rule.copyWith(enabled: enabled);
-    }).toList(growable: false);
+    final next = state
+        .map((rule) {
+          if (rule.profileId != profileId ||
+              !rule.supported ||
+              rule.enabled == enabled) {
+            return rule;
+          }
+          changed = true;
+          return rule.copyWith(enabled: enabled);
+        })
+        .toList(growable: false);
     if (!changed) return;
     _hasLocalChanges = true;
     state = next;
@@ -106,5 +109,5 @@ class CleanupRulesNotifier extends Notifier<List<CleanupRule>> {
 
 final cleanupRulesProvider =
     NotifierProvider<CleanupRulesNotifier, List<CleanupRule>>(
-  CleanupRulesNotifier.new,
-);
+      CleanupRulesNotifier.new,
+    );

@@ -1,6 +1,8 @@
 import 'dart:async';
+import 'dart:io';
 
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:scanner/src/rust/api/project_api.dart';
 import 'package:scanner/src/rust/api/tools_api.dart';
@@ -56,8 +58,8 @@ class _ProjectViewScreenState extends ConsumerState<ProjectViewScreen> {
               onPressed: state.isScanning
                   ? null
                   : () => ref
-                      .read(projectViewNotifierProvider.notifier)
-                      .startScan(),
+                        .read(projectViewNotifierProvider.notifier)
+                        .startScan(),
               icon: const Icon(Icons.folder_open_outlined, size: 18),
               label: Text(state.path.isEmpty ? '选择文件夹' : '重新扫描'),
             ),
@@ -125,29 +127,39 @@ class _CleanupSuggestions extends ConsumerWidget {
                     color: AppColors.greenSoft,
                     borderRadius: BorderRadius.circular(7),
                   ),
-                  child: const Icon(Icons.cleaning_services_outlined,
-                      color: AppColors.green, size: 19),
+                  child: const Icon(
+                    Icons.cleaning_services_outlined,
+                    color: AppColors.green,
+                    size: 19,
+                  ),
                 ),
                 const SizedBox(width: 11),
                 Expanded(
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
-                      const Text('清理建议',
-                          style: TextStyle(fontWeight: FontWeight.w700)),
+                      const Text(
+                        '清理建议',
+                        style: TextStyle(fontWeight: FontWeight.w700),
+                      ),
                       const SizedBox(height: 3),
                       Text(
                         '${candidates.length} 项候选，可释放约 ${formatBytes(reclaimable)}',
                         style: const TextStyle(
-                            color: AppColors.muted, fontSize: 12),
+                          color: AppColors.muted,
+                          fontSize: 12,
+                        ),
                       ),
                     ],
                   ),
                 ),
                 const Tooltip(
                   message: '建议项来自启用的清理规则，删除前仍需确认。',
-                  child: Icon(Icons.info_outline,
-                      size: 17, color: AppColors.muted),
+                  child: Icon(
+                    Icons.info_outline,
+                    size: 17,
+                    color: AppColors.muted,
+                  ),
                 ),
               ],
             ),
@@ -187,44 +199,57 @@ class _CleanupCandidateRow extends ConsumerWidget {
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                Text(candidate.rule.name,
-                    maxLines: 1,
-                    overflow: TextOverflow.ellipsis,
-                    style: const TextStyle(
-                        fontSize: 12, fontWeight: FontWeight.w700)),
+                Text(
+                  candidate.rule.name,
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: const TextStyle(
+                    fontSize: 12,
+                    fontWeight: FontWeight.w700,
+                  ),
+                ),
                 const SizedBox(height: 2),
-                Text('${candidate.itemCount} 个文件 · ${candidate.path}',
-                    maxLines: 1,
-                    overflow: TextOverflow.ellipsis,
-                    style: const TextStyle(
-                        color: AppColors.muted, fontSize: 10)),
+                Text(
+                  '${candidate.itemCount} 个文件 · ${candidate.path}',
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: const TextStyle(color: AppColors.muted, fontSize: 10),
+                ),
               ],
             ),
           ),
           const SizedBox(width: 10),
-          Text(formatBytes(candidate.size),
-              style:
-                  const TextStyle(fontSize: 12, fontWeight: FontWeight.w700)),
+          Text(
+            formatBytes(candidate.size),
+            style: const TextStyle(fontSize: 12, fontWeight: FontWeight.w700),
+          ),
           const SizedBox(width: 8),
-          StatusChip(label: cleanupRiskLabel(candidate.rule.risk), color: riskColor),
+          StatusChip(
+            label: cleanupRiskLabel(candidate.rule.risk),
+            color: riskColor,
+          ),
           if (candidate.canExecute)
             IconButton(
               tooltip: '移到回收站',
               onPressed: () => _confirmCleanup(context, ref),
-              icon: const Icon(Icons.delete_outline,
-                  color: AppColors.red, size: 19),
+              icon: const Icon(
+                Icons.delete_outline,
+                color: AppColors.red,
+                size: 19,
+              ),
             )
-          else if (candidate.rule.action == CleanupActionType.externalInstructions)
+          else if (candidate.rule.action ==
+              CleanupActionType.externalInstructions)
             IconButton(
               tooltip: '查看清理说明',
-              onPressed: () => _showExternalInstructions(context),
-              icon: const Icon(Icons.info_outline, size: 18),
+              onPressed: () => _showCleanupSuggestion(context),
+              icon: const Icon(Icons.terminal_outlined, size: 18),
             )
           else
-            const IconButton(
-              tooltip: '暂不支持自动清理',
-              onPressed: null,
-              icon: Icon(Icons.info_outline, size: 18),
+            IconButton(
+              tooltip: '查看处理建议',
+              onPressed: () => _showCleanupSuggestion(context),
+              icon: const Icon(Icons.info_outline, size: 18),
             ),
         ],
       ),
@@ -232,20 +257,26 @@ class _CleanupCandidateRow extends ConsumerWidget {
   }
 
   Future<void> _confirmCleanup(BuildContext context, WidgetRef ref) async {
-    final confirmed = await showDialog<bool>(
+    final confirmed = await showAppDialog<bool>(
       context: context,
-      builder: (dialogContext) => AlertDialog(
-        title: Text('移到回收站？'),
+      builder: (dialogContext) => AppDialog(
+        title: '移到回收站？',
+        subtitle: candidate.path,
+        icon: Icons.delete_outline,
+        accent: AppColors.red,
         content: Text(
-            '${candidate.rule.name}\n${candidate.path}\n\n${candidate.rule.description}'),
+          candidate.rule.description,
+          style: const TextStyle(color: AppColors.muted, height: 1.45),
+        ),
         actions: [
           TextButton(
             onPressed: () => Navigator.of(dialogContext).pop(false),
             child: const Text('取消'),
           ),
-          FilledButton(
+          FilledButton.icon(
             onPressed: () => Navigator.of(dialogContext).pop(true),
-            child: const Text('移到回收站'),
+            icon: const Icon(Icons.delete_outline, size: 17),
+            label: const Text('移到回收站'),
           ),
         ],
       ),
@@ -257,34 +288,134 @@ class _CleanupCandidateRow extends ConsumerWidget {
       ref
           .read(projectViewNotifierProvider.notifier)
           .removeCleanupCandidate(candidate.path);
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('已移到回收站')),
-      );
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(const SnackBar(content: Text('已移到回收站')));
     } else {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('清理失败，文件可能正在使用或没有权限')),
-      );
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(const SnackBar(content: Text('清理失败，文件可能正在使用或没有权限')));
     }
   }
 
-  Future<void> _showExternalInstructions(BuildContext context) async {
-    await showDialog<void>(
+  Future<void> _showCleanupSuggestion(BuildContext context) async {
+    final command = candidate.rule.externalCommand;
+    final hasCommand = command != null && command.trim().isNotEmpty;
+    await showAppDialog<void>(
       context: context,
-      builder: (dialogContext) => AlertDialog(
-        title: Text(candidate.rule.name),
-        content: Text(
-          '${candidate.rule.description}\n\n'
-          '建议先关闭相关工具，再按该工具的官方方式清理：\n'
-          'pnpm store prune',
+      builder: (dialogContext) => AppDialog(
+        title: candidate.rule.name,
+        subtitle: hasCommand ? '可以复制命令，或打开终端执行。' : '这是一个查看建议，不会自动修改文件。',
+        icon: hasCommand ? Icons.terminal_outlined : Icons.info_outline,
+        accent: hasCommand ? AppColors.blue : AppColors.amber,
+        content: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text(
+              candidate.rule.description,
+              style: const TextStyle(color: AppColors.muted, height: 1.45),
+            ),
+            const SizedBox(height: 14),
+            if (hasCommand) ...[
+              Container(
+                padding: const EdgeInsets.fromLTRB(12, 10, 6, 10),
+                decoration: BoxDecoration(
+                  color: AppColors.canvas,
+                  border: Border.all(color: AppColors.line),
+                  borderRadius: BorderRadius.circular(6),
+                ),
+                child: Row(
+                  children: [
+                    Expanded(
+                      child: SelectableText(
+                        command,
+                        style: const TextStyle(
+                          fontFamily: 'Consolas',
+                          fontSize: 13,
+                          color: AppColors.text,
+                        ),
+                      ),
+                    ),
+                    IconButton(
+                      tooltip: '复制命令',
+                      onPressed: () async {
+                        await Clipboard.setData(ClipboardData(text: command));
+                        if (!context.mounted) return;
+                        ScaffoldMessenger.of(
+                          context,
+                        ).showSnackBar(const SnackBar(content: Text('命令已复制')));
+                      },
+                      icon: const Icon(Icons.copy_outlined, size: 18),
+                    ),
+                  ],
+                ),
+              ),
+            ],
+          ],
         ),
         actions: [
           TextButton(
             onPressed: () => Navigator.of(dialogContext).pop(),
-            child: const Text('知道了'),
+            child: const Text('关闭'),
           ),
+          if (hasCommand)
+            FilledButton.icon(
+              onPressed: () async {
+                final launched = await _openTerminal(command);
+                if (!context.mounted) return;
+                if (launched) {
+                  Navigator.of(dialogContext).pop();
+                } else {
+                  ScaffoldMessenger.of(context).showSnackBar(
+                    const SnackBar(content: Text('未找到可用终端，请复制命令后手动执行')),
+                  );
+                }
+              },
+              icon: const Icon(Icons.play_arrow_outlined, size: 18),
+              label: const Text('打开终端执行'),
+            ),
         ],
       ),
     );
+  }
+
+  Future<bool> _openTerminal(String command) async {
+    try {
+      if (Platform.isWindows) {
+        final shell = Platform.environment['ComSpec'] ?? 'cmd.exe';
+        await Process.start(shell, [
+          '/K',
+          command,
+        ], mode: ProcessStartMode.detached);
+        return true;
+      }
+      if (Platform.isMacOS) {
+        final escaped = command.replaceAll('\\', '\\\\').replaceAll('"', '\\"');
+        await Process.start('osascript', [
+          '-e',
+          'tell application "Terminal" to do script "$escaped"',
+        ], mode: ProcessStartMode.detached);
+        return true;
+      }
+      for (final executable in ['x-terminal-emulator', 'gnome-terminal']) {
+        try {
+          final args = executable == 'gnome-terminal'
+              ? ['--', 'bash', '-lc', command]
+              : ['-e', 'bash', '-lc', command];
+          await Process.start(
+            executable,
+            args,
+            mode: ProcessStartMode.detached,
+          );
+          return true;
+        } on ProcessException {
+          continue;
+        }
+      }
+    } on ProcessException {
+      return false;
+    }
+    return false;
   }
 }
 
@@ -317,13 +448,13 @@ class _ScanStatus extends StatelessWidget {
                   state.error != null
                       ? Icons.error_outline
                       : state.isScanning
-                          ? Icons.radar_outlined
-                          : Icons.storage_outlined,
+                      ? Icons.radar_outlined
+                      : Icons.storage_outlined,
                   color: state.error != null
                       ? AppColors.red
                       : state.isScanning
-                          ? AppColors.blue
-                          : AppColors.green,
+                      ? AppColors.blue
+                      : AppColors.green,
                 ),
               ),
               const SizedBox(width: 12),
@@ -335,10 +466,10 @@ class _ScanStatus extends StatelessWidget {
                       state.error != null
                           ? '扫描失败'
                           : state.isScanning
-                              ? '正在扫描'
-                              : ready
-                                  ? '扫描完成'
-                                  : '等待选择位置',
+                          ? '正在扫描'
+                          : ready
+                          ? '扫描完成'
+                          : '等待选择位置',
                       style: const TextStyle(fontWeight: FontWeight.w700),
                     ),
                     const SizedBox(height: 3),
@@ -346,12 +477,14 @@ class _ScanStatus extends StatelessWidget {
                       state.error != null
                           ? state.error!
                           : state.isScanning
-                              ? state.currentPath
-                              : (ready ? state.path : '未选择文件夹'),
+                          ? state.currentPath
+                          : (ready ? state.path : '未选择文件夹'),
                       maxLines: 1,
                       overflow: TextOverflow.ellipsis,
-                      style:
-                          const TextStyle(color: AppColors.muted, fontSize: 12),
+                      style: const TextStyle(
+                        color: AppColors.muted,
+                        fontSize: 12,
+                      ),
                     ),
                   ],
                 ),
@@ -404,11 +537,15 @@ class _Fact extends StatelessWidget {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        Text(label,
-            style: const TextStyle(color: AppColors.muted, fontSize: 11)),
+        Text(
+          label,
+          style: const TextStyle(color: AppColors.muted, fontSize: 11),
+        ),
         const SizedBox(height: 2),
-        Text(value,
-            style: const TextStyle(fontWeight: FontWeight.w700, fontSize: 14)),
+        Text(
+          value,
+          style: const TextStyle(fontWeight: FontWeight.w700, fontSize: 14),
+        ),
       ],
     );
   }
@@ -431,10 +568,9 @@ class _ResultRow extends StatelessWidget {
       child: Row(
         children: [
           Icon(
-              isFolder
-                  ? Icons.folder_outlined
-                  : Icons.insert_drive_file_outlined,
-              color: AppColors.blue),
+            isFolder ? Icons.folder_outlined : Icons.insert_drive_file_outlined,
+            color: AppColors.blue,
+          ),
           const SizedBox(width: 11),
           Expanded(
             flex: 4,
@@ -446,7 +582,9 @@ class _ResultRow extends StatelessWidget {
                   maxLines: 1,
                   overflow: TextOverflow.ellipsis,
                   style: const TextStyle(
-                      fontWeight: FontWeight.w600, fontSize: 13),
+                    fontWeight: FontWeight.w600,
+                    fontSize: 13,
+                  ),
                 ),
                 const SizedBox(height: 7),
                 ClipRRect(
@@ -463,15 +601,19 @@ class _ResultRow extends StatelessWidget {
           const SizedBox(width: 18),
           SizedBox(
             width: 88,
-            child: Text(formatBytes(detail.size),
-                textAlign: TextAlign.right,
-                style: const TextStyle(fontWeight: FontWeight.w700)),
+            child: Text(
+              formatBytes(detail.size),
+              textAlign: TextAlign.right,
+              style: const TextStyle(fontWeight: FontWeight.w700),
+            ),
           ),
           const SizedBox(width: 22),
           SizedBox(
             width: 76,
-            child: Text('${detail.count} 个文件',
-                style: const TextStyle(color: AppColors.muted, fontSize: 12)),
+            child: Text(
+              '${detail.count} 个文件',
+              style: const TextStyle(color: AppColors.muted, fontSize: 12),
+            ),
           ),
           IconButton(
             tooltip: '打开位置',

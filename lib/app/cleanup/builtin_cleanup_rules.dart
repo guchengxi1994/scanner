@@ -51,6 +51,7 @@ const builtinCleanupRules = <CleanupRule>[
     risk: CleanupRisk.rebuildable,
     action: CleanupActionType.externalInstructions,
     profileId: 'windows-development',
+    externalCommand: 'pnpm store prune',
   ),
   CleanupRule(
     id: 'macos-user-cache',

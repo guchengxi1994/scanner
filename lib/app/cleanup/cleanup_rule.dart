@@ -26,6 +26,7 @@ class CleanupRule {
     required this.risk,
     required this.action,
     this.profileId = 'custom',
+    this.externalCommand,
     this.enabled = true,
     this.builtIn = false,
     this.defaultSelected = false,
@@ -41,6 +42,7 @@ class CleanupRule {
   final CleanupRisk risk;
   final CleanupActionType action;
   final String profileId;
+  final String? externalCommand;
   final bool enabled;
   final bool builtIn;
   final bool defaultSelected;
@@ -57,6 +59,7 @@ class CleanupRule {
     CleanupRisk? risk,
     CleanupActionType? action,
     String? profileId,
+    String? externalCommand,
     bool? enabled,
     bool? builtIn,
     bool? defaultSelected,
@@ -72,27 +75,32 @@ class CleanupRule {
       risk: risk ?? this.risk,
       action: action ?? this.action,
       profileId: profileId ?? this.profileId,
+      externalCommand: externalCommand ?? this.externalCommand,
       enabled: enabled ?? this.enabled,
       builtIn: builtIn ?? this.builtIn,
       defaultSelected: defaultSelected ?? this.defaultSelected,
     );
   }
 
-  Map<String, Object> toJson() => {
-        'id': id,
-        'name': name,
-        'description': description,
-        'platform': platform.name,
-        'scope': scope,
-        'matcherType': matcherType.name,
-        'matcherValue': matcherValue,
-        'risk': risk.name,
-        'action': action.name,
-        'profileId': profileId,
-        'enabled': enabled,
-        'builtIn': builtIn,
-        'defaultSelected': defaultSelected,
-      };
+  Map<String, Object> toJson() {
+    final command = externalCommand;
+    return {
+      'id': id,
+      'name': name,
+      'description': description,
+      'platform': platform.name,
+      'scope': scope,
+      'matcherType': matcherType.name,
+      'matcherValue': matcherValue,
+      'risk': risk.name,
+      'action': action.name,
+      'profileId': profileId,
+      if (command != null) 'externalCommand': command,
+      'enabled': enabled,
+      'builtIn': builtIn,
+      'defaultSelected': defaultSelected,
+    };
+  }
 
   factory CleanupRule.fromJson(Map<String, dynamic> json) {
     return CleanupRule(
@@ -101,12 +109,14 @@ class CleanupRule {
       description: json['description'] as String? ?? '',
       platform: CleanupPlatform.values.byName(json['platform'] as String),
       scope: json['scope'] as String,
-      matcherType:
-          CleanupMatcherType.values.byName(json['matcherType'] as String),
+      matcherType: CleanupMatcherType.values.byName(
+        json['matcherType'] as String,
+      ),
       matcherValue: json['matcherValue'] as String,
       risk: CleanupRisk.values.byName(json['risk'] as String),
       action: CleanupActionType.values.byName(json['action'] as String),
       profileId: json['profileId'] as String? ?? 'custom',
+      externalCommand: json['externalCommand'] as String?,
       enabled: json['enabled'] as bool? ?? true,
       builtIn: json['builtIn'] as bool? ?? false,
       defaultSelected: json['defaultSelected'] as bool? ?? false,
@@ -164,7 +174,9 @@ bool cleanupRuleMatches(CleanupRule rule, String candidatePath) {
   if (!rule.enabled || !rule.supported) return false;
   final candidate = normalizeCleanupPath(candidatePath);
   final scope = normalizeCleanupPath(expandCleanupPath(rule.scope));
-  if (scope.isNotEmpty && candidate != scope && !candidate.startsWith('$scope/')) {
+  if (scope.isNotEmpty &&
+      candidate != scope &&
+      !candidate.startsWith('$scope/')) {
     return false;
   }
 
@@ -193,5 +205,13 @@ String cleanupPlatformLabel(CleanupPlatform platform) {
     CleanupPlatform.windows => 'Windows',
     CleanupPlatform.macos => 'macOS',
     CleanupPlatform.linux => 'Linux',
+  };
+}
+
+String cleanupActionLabel(CleanupActionType action) {
+  return switch (action) {
+    CleanupActionType.moveToTrash => '移到回收站',
+    CleanupActionType.reportOnly => '仅显示建议',
+    CleanupActionType.externalInstructions => '显示命令并允许执行',
   };
 }
