@@ -2,16 +2,14 @@ name: scanner
 description: "A new Flutter project."
 publish_to: 'none' # Remove this line if you wish to publish to pub.dev
 
-version: 3.1.0
+version: 3.2.0
 
 environment:
-  sdk: ^3.9.2
+  sdk: ^3.13.4
 
 dependencies:
-  animated_custom_dropdown: ^3.1.1
   animated_text_kit: ^4.2.2
   auto_size_text: ^3.0.0
-  contextmenu: ^3.0.0
   cupertino_icons: ^1.0.8
   data_table_2: ^2.5.15
   file_selector: ^1.0.3
@@ -22,22 +20,15 @@ dependencies:
     sdk: flutter
   flutter_riverpod: ^2.5.1
   flutter_rust_bridge: 2.5.1
-  flutter_tags_x: ^1.1.0
   freezed_annotation: ^3.0.0
   isar_community: 3.3.2
   isar_community_flutter_libs: 3.3.2
-  loading_indicator: ^3.1.1
   logging: ^1.2.0
   package_info_plus: ^9.0.1
   riverpod: ^2.5.1
   rust_lib_scanner:
     path: rust_builder
-  square_progress_bar: ^1.1.1
   toastification: ^2.1.0
-  treemap:
-    git:
-      url: https://github.com/guchengxi1994/treemap.git
-      ref: cb2ba3aa0a35e151d4ea03771966c3fad72d7786
   window_manager: ^0.4.0
 
 dev_dependencies:
